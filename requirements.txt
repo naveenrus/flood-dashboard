@@ -1,8 +1,10 @@
 streamlit
 earthengine-api
+google-auth
 folium
-requests
-pillow
-matplotlib
+streamlit-folium
 geopy
+Pillow
+matplotlib
 reportlab
+requests
