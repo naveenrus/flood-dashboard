@@ -22,7 +22,7 @@ st.set_page_config(
 st.markdown("""
     <style>
     .block-container {
-        padding-top: 2rem !important;
+        padding-top: 1.5rem !important;
         padding-left: 0.8rem !important;
         padding-right: 0.8rem !important;
         padding-bottom: 0rem !important;
@@ -31,30 +31,6 @@ st.markdown("""
     
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
-
-    .ticker-wrap {
-        width: 100%;
-        overflow: hidden;
-        background: #0f172a;
-        border: 1px solid #1e293b;
-        color: #38bdf8;
-        padding: 6px 0;
-        border-radius: 8px;
-        margin-bottom: 12px;
-        font-family: monospace;
-        font-size: 12px;
-        font-weight: 600;
-    }
-    .ticker {
-        display: inline-block;
-        white-space: nowrap;
-        padding-left: 100%;
-        animation: marquee 24s linear infinite;
-    }
-    @keyframes marquee {
-        0%   { transform: translate(0, 0); }
-        100% { transform: translate(-100%, 0); }
-    }
 
     .metric-card {
         background: #ffffff;
@@ -80,7 +56,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Centered Header
+# Centered Modern Header Banner
 st.markdown("""
     <div style="
         display: flex;
@@ -121,12 +97,24 @@ st.markdown("""
     </div>
 """, unsafe_allow_html=True)
 
-# Ticker Banner
+# Fixed Metadata Technical Ribbon
 st.markdown("""
-    <div class="ticker-wrap">
-        <div class="ticker">
-            🚨 AWARE INDIA SYSTEM ACTIVE • REAL-TIME SENTINEL-1 DUAL-POL (VV+VH) SAR ANALYSIS • SPECKLE FILTERING ENABLED • NATIVE 10M CLOUD ENGINE SYNC READY •
-        </div>
+    <div style="
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background: #0f172a;
+        border: 1px solid #1e293b;
+        color: #94a3b8;
+        padding: 8px 16px;
+        border-radius: 8px;
+        margin-bottom: 14px;
+        font-family: monospace;
+        font-size: 12px;
+    ">
+        <div>🛰️ <b>SENSOR:</b> Sentinel-1 C-Band SAR (VV + VH)</div>
+        <div>⚡ <b>PROCESSING:</b> Speckle Filtered & DEM Masked</div>
+        <div>🌐 <b>ENGINE:</b> Google Earth Engine (10m Native)</div>
     </div>
 """, unsafe_allow_html=True)
 
@@ -178,7 +166,7 @@ if run_btn:
 # MAIN DISPLAY AREA
 # =========================================================
 
-# DEFAULT VIEW: DIRECT FULL-MAP DISPLAY WITHOUT TOP TEXT FLUFF
+# DEFAULT VIEW: DIRECT FULL-FRAME MAP DISPLAY
 if st.session_state.result is None:
     default_m = fm.get_default_india_map()
     st.components.v1.html(default_m._repr_html_(), height=750)
@@ -342,8 +330,9 @@ else:
                                         st.error("File sync failed. Verify Google Drive credentials.")
                         except Exception as e:
                             st.error(f"Pipeline Execution Failed: {e}")
+
 # =========================================================
-# APPLICATION FOOTER (ADD HERE AT THE VERY BOTTOM)
+# APPLICATION FOOTER
 # =========================================================
 st.markdown("""
     <div style="
@@ -361,6 +350,7 @@ st.markdown("""
             🌊 Flood Intelligence System (AWARE INDIA)
         </p>
         <p style="margin: 4px 0 0 0; font-size: 12px; color: #38bdf8;">
-            Designed & Developed by <b>Naveen Bussari</b> </p>
+            Designed & Developed by <b>Naveen Bussari</b> | National Remote Sensing Centre (NRSC)
+        </p>
     </div>
-""", unsafe_allow_html=True)                            
+""", unsafe_allow_html=True)

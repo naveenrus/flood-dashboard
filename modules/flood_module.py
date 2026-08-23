@@ -49,22 +49,28 @@ except ImportError:
     HAS_DRIVE_API = False
 
 # =========================================================
-# INIT EARTH ENGINE (CLOUD + LOCAL DUAL AUTH)
+# INIT EARTH ENGINE (DUAL CLOUD & LOCAL AUTH PARSER)
 # =========================================================
 @st.cache_resource
 def init_ee():
-    """Initializes Earth Engine via GCP Service Account in Cloud, or local CLI auth locally."""
+    """
+    Initializes Earth Engine using Streamlit Secrets in Cloud,
+    or local credentials in development environments.
+    """
     try:
         if "gcp_service_account" in st.secrets:
-            # Cloud mode: Reads service account JSON from Streamlit Secrets
-            creds_dict = json.loads(st.secrets["gcp_service_account"])
+            secret_val = st.secrets["gcp_service_account"]
+            if isinstance(secret_val, str):
+                creds_dict = json.loads(secret_val)
+            else:
+                creds_dict = dict(secret_val)
+
             credentials = ee.ServiceAccountCredentials(
                 creds_dict["client_email"],
                 key_data=json.dumps(creds_dict)
             )
             ee.Initialize(credentials, project='rare-host-474609-d8')
         else:
-            # Local development mode
             ee.Initialize(project='rare-host-474609-d8')
     except Exception as e:
         st.error(f"Earth Engine Initialization Error: {e}")
