@@ -50,27 +50,25 @@ except ImportError:
     HAS_DRIVE_API = False
 
 # =========================================================
-# INIT EARTH ENGINE (MODERN GOOGLE OAUTH2 SERVICE ACCOUNT)
+# INIT EARTH ENGINE (NO UNHEALTHY CACHING + DIRECT DICT PARSE)
 # =========================================================
-@st.cache_resource
 def init_ee():
-    """
-    Initializes Earth Engine using Streamlit Secrets in Cloud,
-    or local credentials in development environments.
-    """
+    """Initializes Earth Engine without caching failures."""
+    # Prevent re-initialization if already initialized in this thread
+    if ee.data._credentials is not None:
+        return
+
     try:
         if "gcp_service_account" in st.secrets:
-            raw_creds = st.secrets["gcp_service_account"]
+            # Get dict directly from Streamlit Secrets
+            secret_val = st.secrets["gcp_service_account"]
             
-            if isinstance(raw_creds, str):
-                cleaned_json = raw_creds.replace('\n', '\\n').replace('\r', '')
-                try:
-                    creds_dict = json.loads(raw_creds)
-                except json.JSONDecodeError:
-                    creds_dict = json.loads(cleaned_json)
+            if isinstance(secret_val, str):
+                creds_dict = json.loads(secret_val)
             else:
-                creds_dict = dict(raw_creds)
+                creds_dict = dict(secret_val)
 
+            # Convert literal string '\n' back to actual newlines
             if "private_key" in creds_dict:
                 creds_dict["private_key"] = creds_dict["private_key"].replace('\\n', '\n')
 
@@ -86,7 +84,8 @@ def init_ee():
         else:
             ee.Initialize(project='rare-host-474609-d8')
     except Exception as e:
-        st.error(f"Earth Engine Initialization Error: {e}")
+        st.error(f"Earth Engine Authentication Failed: {e}")
+        st.stop()  # Stop Streamlit execution immediately so it doesn't crash downstream with _NOT_INITIALIZED_MESSAGE
 
 # =========================================================
 # FETCH ADMIN DISTRICT & STATE LISTS FOR DROPDOWN
@@ -112,7 +111,6 @@ def get_admin_lists():
 def get_default_india_map():
     init_ee()
     
-    # Centered at [20.2, 78.5] with zoom 4.6 to fit all states from J&K down to Tamil Nadu & Kerala
     m = folium.Map(
         location=[20.2, 78.5],
         zoom_start=4.6,
@@ -127,12 +125,10 @@ def get_default_india_map():
         overlay=False
     ).add_to(m)
 
-    # Load Full District Asset
     all_districts = ee.FeatureCollection(
         "projects/rare-host-474609-d8/assets/INDIA_DIST_BDY__UPDATED__2023_LCC"
     )
 
-    # Assign integer IDs to states to dissolve district lines
     unique_states = all_districts.aggregate_array("STATE").distinct()
 
     def set_state_id(feature):
@@ -142,13 +138,11 @@ def get_default_india_map():
 
     numbered_districts = all_districts.map(set_state_id)
 
-    # Solid numeric state raster
     state_raster = numbered_districts.reduceToImage(
         properties=['STATE_NUM_ID'],
         reducer=ee.Reducer.first()
     ).unmask(0)
 
-    # Neighborhood edge detection for continuous state boundaries
     state_min = state_raster.reduceNeighborhood(
         reducer=ee.Reducer.min(),
         kernel=ee.Kernel.square(radius=1.5, units='pixels')
@@ -162,7 +156,6 @@ def get_default_india_map():
 
     admin_group = folium.FeatureGroup(name="Admin Boundaries", show=True)
     
-    # Solid black state boundary outlines ("000000")
     state_map = complete_state_edges.selfMask().getMapId({"palette": ["000000"]})
     folium.raster_layers.TileLayer(
         tiles=state_map["tile_fetcher"].url_format,
@@ -172,7 +165,6 @@ def get_default_india_map():
         show=True
     ).add_to(admin_group)
 
-    # Centroids for Bhuvan State Name Labels
     STATE_CENTROIDS = {
         "JAMMU AND KASHMIR": [33.7782, 76.5762],
         "LADAKH": [34.1526, 77.5771],
@@ -238,7 +230,7 @@ def get_default_india_map():
     return m
 
 # =========================================================
-# GET REGION (WITH STATE GEOMETRY SIMPLIFICATION)
+# GET REGION
 # =========================================================
 def get_region(name, mode):
     fc = ee.FeatureCollection(
@@ -275,7 +267,7 @@ def find_date(region, user_date):
     return None
 
 # =========================================================
-# DUAL-POLARIZATION SAR PROCESSING (VV + VH SIGMA NAUGHT)
+# DUAL-POLARIZATION SAR PROCESSING
 # =========================================================
 def get_sar(region, start, end):
     col = ee.ImageCollection("COPERNICUS/S1_GRD") \
@@ -322,7 +314,7 @@ def get_water(img):
     return water_mask
 
 # =========================================================
-# GEOTIFF RASTER EXPORT FUNCTION (BYPASSES 50MB LIMIT)
+# GEOTIFF RASTER EXPORT FUNCTION
 # =========================================================
 def get_flood_raster_url(flood, region, name, mode="district"):
     export_scale = 30 if mode == "district" else 100
@@ -351,7 +343,7 @@ def get_flood_geojson_url(flood, region, name):
     return vectors.getDownloadURL(filetype="GEO_JSON", filename=f"{name}_flood_vectors")
 
 # =========================================================
-# DRIVE PIPELINE EXPORT TRIGGER (10M NATIVE)
+# DRIVE PIPELINE EXPORT TRIGGER
 # =========================================================
 def trigger_drive_export_10m(flood, region, name, export_type="raster"):
     init_ee()
