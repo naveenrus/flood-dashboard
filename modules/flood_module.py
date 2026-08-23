@@ -53,17 +53,22 @@ except ImportError:
 # =========================================================
 @st.cache_resource
 def init_ee():
-    """
-    Initializes Earth Engine using Streamlit Secrets in Cloud,
-    or local credentials in development environments.
-    """
+    """Initializes Earth Engine safely from Streamlit secrets or local fallback."""
     try:
         if "gcp_service_account" in st.secrets:
-            secret_val = st.secrets["gcp_service_account"]
-            if isinstance(secret_val, str):
-                creds_dict = json.loads(secret_val)
+            raw_creds = st.secrets["gcp_service_account"]
+            
+            if isinstance(raw_creds, str):
+                cleaned_json = raw_creds.replace('\n', '\\n').replace('\r', '')
+                try:
+                    creds_dict = json.loads(raw_creds)
+                except json.JSONDecodeError:
+                    creds_dict = json.loads(cleaned_json)
             else:
-                creds_dict = dict(secret_val)
+                creds_dict = dict(raw_creds)
+
+            if "private_key" in creds_dict:
+                creds_dict["private_key"] = creds_dict["private_key"].replace('\\n', '\n')
 
             credentials = ee.ServiceAccountCredentials(
                 creds_dict["client_email"],
