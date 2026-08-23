@@ -9,6 +9,7 @@ import folium
 import requests
 import streamlit as st
 
+from google.oauth2 import service_account
 from datetime import datetime, timedelta
 from io import BytesIO
 
@@ -49,11 +50,14 @@ except ImportError:
     HAS_DRIVE_API = False
 
 # =========================================================
-# INIT EARTH ENGINE (DUAL CLOUD & LOCAL AUTH PARSER)
+# INIT EARTH ENGINE (MODERN GOOGLE OAUTH2 SERVICE ACCOUNT)
 # =========================================================
 @st.cache_resource
 def init_ee():
-    """Initializes Earth Engine safely from Streamlit secrets or local fallback."""
+    """
+    Initializes Earth Engine using Streamlit Secrets in Cloud,
+    or local credentials in development environments.
+    """
     try:
         if "gcp_service_account" in st.secrets:
             raw_creds = st.secrets["gcp_service_account"]
@@ -70,11 +74,15 @@ def init_ee():
             if "private_key" in creds_dict:
                 creds_dict["private_key"] = creds_dict["private_key"].replace('\\n', '\n')
 
-            credentials = ee.ServiceAccountCredentials(
-                creds_dict["client_email"],
-                key_data=json.dumps(creds_dict)
+            scopes = ['https://www.googleapis.com/auth/earthengine']
+            credentials = service_account.Credentials.from_service_account_info(
+                creds_dict, scopes=scopes
             )
-            ee.Initialize(credentials, project='rare-host-474609-d8')
+            
+            ee.Initialize(
+                credentials=credentials,
+                project='rare-host-474609-d8'
+            )
         else:
             ee.Initialize(project='rare-host-474609-d8')
     except Exception as e:
