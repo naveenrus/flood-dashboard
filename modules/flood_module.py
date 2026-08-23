@@ -52,15 +52,21 @@ except ImportError:
 # =========================================================
 # INIT EARTH ENGINE (NO UNHEALTHY CACHING + DIRECT DICT PARSE)
 # =========================================================
+# =========================================================
+# INIT EARTH ENGINE (SAFE INTERNAL STATE CHECK)
+# =========================================================
 def init_ee():
-    """Initializes Earth Engine without caching failures."""
-    # Prevent re-initialization if already initialized in this thread
-    if ee.data._credentials is not None:
-        return
+    """Initializes Earth Engine safely without accessing private api attributes."""
+    # Safe check if EE is already initialized
+    try:
+        if ee.data.get_persistent_credentials() is not None or getattr(ee.data, '_state', None) is not None:
+            if getattr(ee.data._state, 'cloud_api_resource', None) is not None:
+                return
+    except Exception:
+        pass
 
     try:
         if "gcp_service_account" in st.secrets:
-            # Get dict directly from Streamlit Secrets
             secret_val = st.secrets["gcp_service_account"]
             
             if isinstance(secret_val, str):
@@ -68,7 +74,6 @@ def init_ee():
             else:
                 creds_dict = dict(secret_val)
 
-            # Convert literal string '\n' back to actual newlines
             if "private_key" in creds_dict:
                 creds_dict["private_key"] = creds_dict["private_key"].replace('\\n', '\n')
 
@@ -84,7 +89,7 @@ def init_ee():
         else:
             ee.Initialize(project='rare-host-474609-d8')
     except Exception as e:
-        st.error(f"Earth Engine Authentication Failed: {e}")
+        st.error(f"Earth Engine Initialization Error: {e}")
         st.stop()  # Stop Streamlit execution immediately so it doesn't crash downstream with _NOT_INITIALIZED_MESSAGE
 
 # =========================================================
