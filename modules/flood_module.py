@@ -1,0 +1,796 @@
+import json
+import ee
+import streamlit as st
+
+@st.cache_resource
+def init_ee():
+    if "gcp_service_account" in st.secrets:
+        # Cloud deployment mode (Streamlit Community Cloud)
+        creds_dict = json.loads(st.secrets["gcp_service_account"])
+        credentials = ee.ServiceAccountCredentials(
+            creds_dict["client_email"],
+            key_data=json.dumps(creds_dict)
+        )
+        ee.Initialize(credentials, project='rare-host-474609-d8')
+    else:
+        # Local development mode
+        ee.Initialize(project='rare-host-474609-d8')
+
+
+# =========================================================
+# modules/flood_module.py
+# =========================================================
+
+import os
+import ee
+import folium
+import requests
+import streamlit as st
+
+from datetime import datetime, timedelta
+from io import BytesIO
+
+from PIL import Image
+
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+
+from geopy.distance import geodesic
+
+from reportlab.platypus import (
+    SimpleDocTemplate,
+    Paragraph,
+    Spacer,
+    Table,
+    TableStyle
+)
+
+from reportlab.lib import colors
+
+from reportlab.lib.styles import (
+    getSampleStyleSheet,
+    ParagraphStyle
+)
+
+from reportlab.lib.enums import (
+    TA_CENTER,
+    TA_JUSTIFY
+)
+
+# Optional dependencies for Drive API Local Sync
+try:
+    from googleapiclient.discovery import build
+    from googleapiclient.http import MediaIoBaseDownload
+    from google.oauth2.credentials import Credentials
+    HAS_DRIVE_API = True
+except ImportError:
+    HAS_DRIVE_API = False
+
+# =========================================================
+# INIT EARTH ENGINE
+# =========================================================
+@st.cache_resource
+def init_ee():
+    ee.Initialize(
+        project='rare-host-474609-d8'
+    )
+
+# =========================================================
+# FETCH ADMIN DISTRICT & STATE LISTS FOR DROPDOWN
+# =========================================================
+@st.cache_data
+def get_admin_lists():
+    """Queries GEE asset to retrieve sorted lists of unique districts and states."""
+    init_ee()
+    fc = ee.FeatureCollection(
+        "projects/rare-host-474609-d8/assets/INDIA_DIST_BDY__UPDATED__2023_LCC"
+    )
+    
+    try:
+        districts = sorted(fc.aggregate_array("District").distinct().getInfo())
+        states = sorted(fc.aggregate_array("STATE").distinct().getInfo())
+        return districts, states
+    except Exception:
+        return ["FARRUKHABAD", "CACHAR"], ["UTTAR PRADESH", "ASSAM"]
+
+# =========================================================
+# DEFAULT INDIA MAP (FULL-FRAME PERFECT FIT FOR ALL STATES)
+# =========================================================
+def get_default_india_map():
+    init_ee()
+    
+    # Centered at [20.2, 78.5] with zoom 4.6 to fit all states from J&K down to Tamil Nadu & Kerala
+    m = folium.Map(
+        location=[20.2, 78.5],
+        zoom_start=4.6,
+        tiles="OpenStreetMap",
+        control_scale=True
+    )
+
+    folium.TileLayer(
+        tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        attr='Esri',
+        name='Satellite Imagery',
+        overlay=False
+    ).add_to(m)
+
+    # Load Full District Asset
+    all_districts = ee.FeatureCollection(
+        "projects/rare-host-474609-d8/assets/INDIA_DIST_BDY__UPDATED__2023_LCC"
+    )
+
+    # Assign integer IDs to states to dissolve district lines
+    unique_states = all_districts.aggregate_array("STATE").distinct()
+
+    def set_state_id(feature):
+        state_name = feature.get('STATE')
+        state_index = unique_states.indexOf(state_name)
+        return feature.set('STATE_NUM_ID', ee.Number(state_index).add(1))
+
+    numbered_districts = all_districts.map(set_state_id)
+
+    # Solid numeric state raster
+    state_raster = numbered_districts.reduceToImage(
+        properties=['STATE_NUM_ID'],
+        reducer=ee.Reducer.first()
+    ).unmask(0)
+
+    # Neighborhood edge detection for continuous state boundaries
+    state_min = state_raster.reduceNeighborhood(
+        reducer=ee.Reducer.min(),
+        kernel=ee.Kernel.square(radius=1.5, units='pixels')
+    )
+    state_max = state_raster.reduceNeighborhood(
+        reducer=ee.Reducer.max(),
+        kernel=ee.Kernel.square(radius=1.5, units='pixels')
+    )
+    
+    complete_state_edges = state_min.neq(state_max).And(state_raster.gt(0).Or(state_max.gt(0)))
+
+    admin_group = folium.FeatureGroup(name="Admin Boundaries", show=True)
+    
+    # Solid black state boundary outlines ("000000")
+    state_map = complete_state_edges.selfMask().getMapId({"palette": ["000000"]})
+    folium.raster_layers.TileLayer(
+        tiles=state_map["tile_fetcher"].url_format,
+        attr='Google Earth Engine',
+        overlay=True,
+        control=False,
+        show=True
+    ).add_to(admin_group)
+
+    # Centroids for Bhuvan State Name Labels
+    STATE_CENTROIDS = {
+        "JAMMU AND KASHMIR": [33.7782, 76.5762],
+        "LADAKH": [34.1526, 77.5771],
+        "HIMACHAL PRADESH": [31.1048, 77.1734],
+        "PUNJAB": [31.1471, 75.3412],
+        "UTTARAKHAND": [30.0668, 79.0193],
+        "HARYANA": [29.0588, 76.0856],
+        "DELHI": [28.7041, 77.1025],
+        "RAJASTHAN": [27.0238, 74.2179],
+        "UTTAR PRADESH": [26.8467, 80.9462],
+        "BIHAR": [25.0961, 85.3131],
+        "SIKKIM": [27.5330, 88.5122],
+        "ARUNACHAL PRADESH": [28.2180, 94.7278],
+        "ASSAM": [26.2006, 92.9376],
+        "NAGALAND": [26.1584, 94.5624],
+        "MANIPUR": [24.6637, 93.9063],
+        "MIZORAM": [23.1645, 92.9376],
+        "TRIPURA": [23.9408, 91.9882],
+        "MEGHALAYA": [25.4670, 91.3662],
+        "WEST BENGAL": [22.9868, 87.8550],
+        "JHARKHAND": [23.6102, 85.2799],
+        "ODISHA": [20.9517, 85.0985],
+        "CHHATTISGARH": [21.2787, 81.8661],
+        "MADHYA PRADESH": [22.9734, 78.6569],
+        "GUJARAT": [22.2587, 71.1924],
+        "MAHARASHTRA": [19.7515, 75.7139],
+        "TELANGANA": [18.1124, 79.0193],
+        "ANDHRA PRADESH": [15.9129, 79.7400],
+        "KARNATAKA": [15.3173, 75.7139],
+        "GOA": [15.2993, 74.1240],
+        "KERALA": [10.8505, 76.2711],
+        "TAMIL NADU": [11.1271, 78.6569],
+        "PUDUCHERRY": [11.9416, 79.8083],
+    }
+
+    for state_name, coords in STATE_CENTROIDS.items():
+        icon = folium.DivIcon(
+            icon_size=(150, 36),
+            icon_anchor=(75, 18),
+            html=f'''
+                <div style="
+                    font-family: Arial, sans-serif;
+                    font-size: 10px;
+                    font-weight: bold;
+                    color: #ffffff;
+                    text-shadow: -1px -1px 2px #000, 1px -1px 2px #000, -1px 1px 2px #000, 1px 1px 2px #000;
+                    white-space: nowrap;
+                    text-align: center;
+                    pointer-events: none;
+                ">
+                    {state_name}
+                </div>
+            '''
+        )
+        folium.Marker(
+            location=coords,
+            icon=icon
+        ).add_to(admin_group)
+
+    admin_group.add_to(m)
+    folium.LayerControl(collapsed=False, position='topright').add_to(m)
+    
+    return m
+
+# =========================================================
+# GET REGION (WITH STATE GEOMETRY SIMPLIFICATION)
+# =========================================================
+def get_region(name, mode):
+    fc = ee.FeatureCollection(
+        "projects/rare-host-474609-d8/assets/INDIA_DIST_BDY__UPDATED__2023_LCC"
+    )
+
+    if mode == "district":
+        filtered = fc.filter(ee.Filter.eq("District", name.upper()))
+        geom = filtered.geometry()
+    else:
+        filtered = fc.filter(ee.Filter.eq("STATE", name.upper()))
+        geom = filtered.geometry().dissolve().simplify(maxError=500)
+
+    return geom
+
+# =========================================================
+# FIND AVAILABLE SAR DATE
+# =========================================================
+def find_date(region, user_date):
+    for i in range(15):
+        d = user_date - timedelta(days=i)
+
+        col = ee.ImageCollection(
+            "COPERNICUS/S1_GRD"
+        ).filterBounds(region) \
+         .filterDate(
+            d.strftime("%Y-%m-%d"),
+            (d + timedelta(days=1)).strftime("%Y-%m-%d")
+         )
+
+        if col.size().getInfo() > 0:
+            return d.strftime("%Y-%m-%d")
+
+    return None
+
+# =========================================================
+# DUAL-POLARIZATION SAR PROCESSING (VV + VH SIGMA NAUGHT)
+# =========================================================
+def get_sar(region, start, end):
+    """
+    Retrieves Sentinel-1 S1_GRD dual-pol sigma naught (VV + VH) bands,
+    applies specular/volume ratios, and crops to region.
+    """
+    col = ee.ImageCollection("COPERNICUS/S1_GRD") \
+        .filterBounds(region) \
+        .filterDate(start, end) \
+        .filter(ee.Filter.eq('instrumentMode', 'IW')) \
+        .select(['VV', 'VH']) \
+        .median()
+
+    # Calculate VV/VH cross-polarization ratio
+    vv_vh_ratio = col.select('VV').subtract(col.select('VH')).rename('VV_VH_ratio')
+
+    return col.addBands(vv_vh_ratio)
+
+# =========================================================
+# PERMANENT WATER
+# =========================================================
+def get_permanent_water(region):
+    water = ee.Image(
+        'projects/rare-host-474609-d8/assets/India_VV_Water_Optimized'
+    )
+    return water.clip(region).gt(0)
+
+# =========================================================
+# DUAL-POL CURRENT WATER EXTRACTION
+# =========================================================
+def get_water(img):
+    """
+    Dual-polarization multi-threshold water extraction pipeline.
+    Combines specular scattering (VV) with volume depolarization (VH).
+    """
+    vv = img.select('VV')
+    vh = img.select('VH')
+
+    # Apply Focal Median Speckle Filter to both channels
+    vv_filtered = vv.focal_median(30, 'circle', 'meters')
+    vh_filtered = vh.focal_median(30, 'circle', 'meters')
+
+    # Dual-Pol Thresholding Logic:
+    # 1. VV < -17.5 dB (Open water specular backscatter drop)
+    # 2. VH < -24.0 dB (Smooth water cross-polarization drop)
+    open_water_vv = vv_filtered.lt(-17.5)
+    open_water_vh = vh_filtered.lt(-24.0)
+    
+    # Combined water mask (Both VV and VH conditions met)
+    water_mask = open_water_vv.And(open_water_vh)
+
+    # SRTM DEM Slope Mask (< 3 degrees)
+    dem = ee.Image('USGS/SRTMGL1_003')
+    slope = ee.Terrain.slope(dem)
+    water_mask = water_mask.updateMask(slope.lt(3))
+
+    # Remove isolated speckle noise patches (< 10 connected pixels)
+    pixel_count = water_mask.connectedPixelCount(maxSize=100, eightConnected=True)
+    water_mask = water_mask.updateMask(pixel_count.gte(10))
+
+    return water_mask
+
+# =========================================================
+# GEOTIFF RASTER EXPORT FUNCTION (BYPASSES 50MB LIMIT)
+# =========================================================
+def get_flood_raster_url(flood, region, name, mode="district"):
+    """
+    Generates a GeoTIFF download URL optimized to stay below GEE's 50MB limit.
+    Uses 30m resolution for districts and 100m for entire states.
+    """
+    export_scale = 30 if mode == "district" else 100
+    simple_geom = region.simplify(maxError=500)
+    export_image = flood.unmask(0).byte()
+
+    return export_image.getDownloadURL({
+        'name': f"{name}_flood_{mode}_{export_scale}m",
+        'scale': export_scale,
+        'crs': 'EPSG:4326',
+        'region': simple_geom,
+        'format': 'GEO_TIFF'
+    })
+
+# =========================================================
+# GEOJSON VECTOR EXPORT FUNCTION
+# =========================================================
+def get_flood_geojson_url(flood, region, name):
+    vectors = flood.reduceToVectors(
+        geometry=region,
+        scale=30,
+        geometryType='polygon',
+        eightConnected=False,
+        maxPixels=1e13
+    )
+    return vectors.getDownloadURL(filetype="GEO_JSON", filename=f"{name}_flood_vectors")
+
+# =========================================================
+# DRIVE PIPELINE EXPORT TRIGGER (10M NATIVE)
+# =========================================================
+def trigger_drive_export_10m(flood, region, name, export_type="raster"):
+    init_ee()
+    
+    if export_type == "raster":
+        task = ee.batch.Export.image.toDrive(
+            image=flood.unmask(0).byte(),
+            description=f"{name}_Flood_10m_Raster",
+            folder='EE_Flood_Exports',
+            fileNamePrefix=f"{name}_flood_10m",
+            region=region,
+            scale=10,
+            crs='EPSG:4326',
+            maxPixels=1e13
+        )
+    else:
+        vectors = flood.reduceToVectors(
+            geometry=region,
+            scale=10,
+            geometryType='polygon',
+            eightConnected=False,
+            maxPixels=1e13
+        )
+        task = ee.batch.Export.table.toDrive(
+            collection=vectors,
+            description=f"{name}_Flood_10m_Vectors",
+            folder='EE_Flood_Exports',
+            fileNamePrefix=f"{name}_flood_10m_vectors",
+            fileFormat='SHP'
+        )
+        
+    task.start()
+    return task.id
+
+# =========================================================
+# POLL GEE TASK STATUS
+# =========================================================
+def check_task_status(task_id):
+    tasks = ee.batch.Task.list()
+    for t in tasks:
+        if t.id == task_id:
+            return t.status()['state']
+    return "UNKNOWN"
+
+# =========================================================
+# DRIVE TO LOCAL SYNC
+# =========================================================
+def sync_drive_to_local_path(filename_prefix, local_save_directory):
+    if not HAS_DRIVE_API:
+        raise Exception("google-api-python-client is not installed.")
+
+    if not os.path.exists(local_save_directory):
+        os.makedirs(local_save_directory)
+
+    if not os.path.exists('credentials.json'):
+        raise Exception("credentials.json missing for Google Drive API authorization.")
+
+    creds = Credentials.from_authorized_user_file('credentials.json')
+    service = build('drive', 'v3', credentials=creds)
+
+    query = f"name contains '{filename_prefix}' and trashed = false"
+    results = service.files().list(q=query, fields="files(id, name)").execute()
+    items = results.get('files', [])
+
+    if not items:
+        return None
+
+    file_id = items[0]['id']
+    file_name = items[0]['name']
+    local_file_path = os.path.join(local_save_directory, file_name)
+
+    request = service.files().get_media(fileId=file_id)
+    with open(local_file_path, 'wb') as f:
+        downloader = MediaIoBaseDownload(f, request)
+        done = False
+        while not done:
+            status, done = downloader.next_chunk()
+
+    return local_file_path
+
+# =========================================================
+# SAFE GEE IMAGE
+# =========================================================
+def safe_gee_image(image, region, palette, dim, min_value=None, max_value=None):
+    try:
+        vis = {
+            "region": region.simplify(maxError=500),
+            "dimensions": dim,
+            "format": "png"
+        }
+
+        if palette:
+            vis["palette"] = palette
+        if min_value is not None:
+            vis["min"] = min_value
+        if max_value is not None:
+            vis["max"] = max_value
+
+        url = image.getThumbURL(vis)
+        response = requests.get(url)
+
+        if response.status_code != 200:
+            return None
+
+        return Image.open(BytesIO(response.content)).convert("RGBA")
+    except Exception:
+        return None
+
+# =========================================================
+# GET FLOOD MAP
+# =========================================================
+def get_flood_map(name, date, mode):
+    init_ee()
+
+    region = get_region(name, mode)
+    user_date = datetime.strptime(date, "%Y-%m-%d")
+    actual = find_date(region, user_date)
+
+    if actual is None:
+        return (None, 0, None, None, region, "No Data")
+
+    d = datetime.strptime(actual, "%Y-%m-%d")
+
+    after = get_sar(
+        region,
+        actual,
+        (d + timedelta(days=3)).strftime("%Y-%m-%d")
+    )
+
+    permanent_water = get_permanent_water(region)
+    current_water = get_water(after)
+
+    flood = current_water.And(permanent_water.Not())
+    flood = flood.updateMask(flood).clip(region)
+
+    calc_scale = 10 if mode == "district" else 30
+
+    area = flood.multiply(ee.Image.pixelArea()).reduceRegion(
+        reducer=ee.Reducer.sum(),
+        geometry=region,
+        scale=calc_scale,
+        maxPixels=1e13,
+        bestEffort=True
+    )
+
+    area_dict = area.getInfo()
+    raw_val = list(area_dict.values())[0] if area_dict else 0
+    flood_area = (raw_val / 10000) if raw_val else 0
+
+    bbox = region.bounds().coordinates().getInfo()[0]
+    min_lon, min_lat = bbox[0]
+    max_lon, max_lat = bbox[2]
+    center_lat = (min_lat + max_lat) / 2
+    center_lon = (min_lon + max_lon) / 2
+
+    m = folium.Map(
+        location=[center_lat, center_lon],
+        zoom_start=7 if mode == "state" else 9,
+        tiles="OpenStreetMap",
+        control_scale=True
+    )
+
+    folium.TileLayer(
+        tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        attr='Esri',
+        name='Satellite Imagery',
+        overlay=False
+    ).add_to(m)
+
+    sar_clip = after.select('VV').clip(region)
+    sar_map = sar_clip.getMapId({"min": -25, "max": 0})
+    folium.raster_layers.TileLayer(
+        tiles=sar_map["tile_fetcher"].url_format,
+        attr='Google Earth Engine',
+        name='SAR VV',
+        overlay=True,
+        control=True,
+        show=False
+    ).add_to(m)
+
+    flood_map = flood.selfMask().getMapId({"palette": ["FF0000"]})
+    folium.raster_layers.TileLayer(
+        tiles=flood_map["tile_fetcher"].url_format,
+        attr='Google Earth Engine',
+        name='Flood Inundation',
+        overlay=True,
+        control=True,
+        opacity=0.8,
+        show=True
+    ).add_to(m)
+
+    water_map = permanent_water.selfMask().getMapId({"palette": ["0000FF"]})
+    folium.raster_layers.TileLayer(
+        tiles=water_map["tile_fetcher"].url_format,
+        attr='Google Earth Engine',
+        name='Permanent Water',
+        overlay=True,
+        control=True,
+        opacity=0.8,
+        show=True
+    ).add_to(m)
+
+    all_districts = ee.FeatureCollection(
+        "projects/rare-host-474609-d8/assets/INDIA_DIST_BDY__UPDATED__2023_LCC"
+    )
+    unique_states = all_districts.aggregate_array("STATE").distinct()
+
+    def set_state_id(feature):
+        state_name = feature.get('STATE')
+        state_index = unique_states.indexOf(state_name)
+        return feature.set('STATE_NUM_ID', ee.Number(state_index).add(1))
+
+    numbered_districts = all_districts.map(set_state_id)
+    state_image = numbered_districts.reduceToImage(
+        properties=['STATE_NUM_ID'],
+        reducer=ee.Reducer.first()
+    )
+    state_edges = state_image.zeroCrossing()
+
+    admin_group = folium.FeatureGroup(name="Admin Boundaries", show=True)
+    state_map_id = state_edges.selfMask().getMapId({"palette": ["000000"]})
+    folium.raster_layers.TileLayer(
+        tiles=state_map_id["tile_fetcher"].url_format,
+        attr='Google Earth Engine',
+        overlay=True,
+        control=False,
+        show=True
+    ).add_to(admin_group)
+
+    admin_group.add_to(m)
+
+    folium.GeoJson(
+        region.simplify(maxError=500).getInfo(),
+        style_function=lambda feature: {
+            'fillColor': 'none',
+            'color': 'black',
+            'weight': 3,
+            'fillOpacity': 0
+        },
+        name='Boundary'
+    ).add_to(m)
+
+    m.fit_bounds([[min_lat, min_lon], [max_lat, max_lon]])
+
+    folium.LayerControl(collapsed=False, position='topright').add_to(m)
+
+    css = """
+    <style>
+    .leaflet-control-layers-expanded {
+        background: #ffffff !important;
+        padding: 10px 14px !important;
+        border-radius: 8px !important;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3) !important;
+        font-family: Arial, sans-serif !important;
+        font-size: 13px !important;
+        color: #1e293b !important;
+        z-index: 9999 !important;
+    }
+    </style>
+    """
+    m.get_root().html.add_child(folium.Element(css))
+
+    return (m, flood_area, flood, permanent_water, region, actual)
+
+# =========================================================
+# GENERATE MAP PDF
+# =========================================================
+def generate_map_pdf(flood, water, region, name, date):
+    simple_region = region.simplify(maxError=500)
+    coords = simple_region.bounds().coordinates().getInfo()[0]
+    width = abs(coords[1][0] - coords[0][0])
+    dim = 1024 if width < 5 else 512
+
+    area_calc = flood.multiply(ee.Image.pixelArea()).reduceRegion(
+        reducer=ee.Reducer.sum(),
+        geometry=region,
+        scale=30,
+        maxPixels=1e13,
+        bestEffort=True
+    )
+
+    area_dict = area_calc.getInfo()
+    raw_val = list(area_dict.values())[0] if area_dict else 0
+    flood_area = (raw_val / 10000) if raw_val else 0
+
+    sar = get_sar(
+        simple_region,
+        date,
+        (datetime.strptime(date, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
+    ).select('VV')
+
+    sar_img = safe_gee_image(sar.clip(simple_region), simple_region, None, dim, -25, 0)
+    water_img = safe_gee_image(water.selfMask(), simple_region, ["0000FF"], dim)
+    flood_img = safe_gee_image(flood.selfMask(), simple_region, ["FF0000"], dim)
+
+    boundary = ee.Image().byte().paint(featureCollection=ee.FeatureCollection(simple_region), color=1, width=3)
+    boundary_img = safe_gee_image(boundary.selfMask(), simple_region, ["000000"], dim)
+
+    if sar_img is None:
+        raise Exception("SAR image generation failed")
+
+    combined = sar_img
+    if water_img:
+        combined = Image.alpha_composite(combined, water_img)
+    if flood_img:
+        combined = Image.alpha_composite(combined, flood_img)
+    if boundary_img:
+        combined = Image.alpha_composite(combined, boundary_img)
+
+    width_km = geodesic((coords[0][1], coords[0][0]), (coords[1][1], coords[1][0])).km
+    scale_km = 50 if width_km > 300 else 20 if width_km > 100 else 10
+
+    fig = plt.figure(figsize=(12, 10))
+
+    fig.text(0.5, 0.965, f"Flood Inundation Map of {name.upper()}", ha='center', fontsize=22, fontweight='bold', color='#0B4FA2')
+    fig.text(0.5, 0.935, f"Derived from Sentinel-1 Dual-Pol SAR Imagery ({date})", ha='center', fontsize=11, color='darkred')
+
+    ax = fig.add_axes([0.05, 0.12, 0.70, 0.78])
+    ax.imshow(combined)
+    ax.set_xticks([])
+    ax.set_yticks([])
+
+    for spine in ax.spines.values():
+        spine.set_visible(True)
+        spine.set_linewidth(1.5)
+        spine.set_color("black")
+
+    legend_ax = fig.add_axes([0.77, 0.55, 0.20, 0.18])
+    legend_ax.axis("off")
+    flood_patch = mpatches.Patch(color='red', label='Flood Inundation')
+    water_patch = mpatches.Patch(color='blue', label='Permanent Water')
+    boundary_patch = mpatches.Patch(color='black', label='Boundary')
+
+    legend_ax.legend(handles=[flood_patch, water_patch, boundary_patch], loc='center', fontsize=10, frameon=True)
+
+    north_ax = fig.add_axes([0.83, 0.80, 0.08, 0.10])
+    north_ax.axis("off")
+    north_ax.annotate('N', xy=(0.5, 0.9), xytext=(0.5, 0.2), arrowprops=dict(facecolor='black', width=3, headwidth=10), ha='center', fontsize=14, fontweight='bold')
+
+    info_text = f"Satellite Date: {date}\n\nEstimated Flood:\n{round(flood_area,2):,} ha\n\nSensor:\nSentinel-1 (VV+VH)"
+    fig.text(0.78, 0.32, info_text, fontsize=9.5, bbox=dict(facecolor='#f8f9fa', edgecolor='black', boxstyle='round,pad=0.5'))
+
+    scale_ax = fig.add_axes([0.78, 0.16, 0.18, 0.05])
+    scale_ax.set_xlim(0, scale_km)
+    scale_ax.set_ylim(0, 1)
+
+    scale_ax.plot([0, scale_km], [0.5, 0.5], color='black', linewidth=2.5)
+    for x in [0, scale_km/2, scale_km]:
+        scale_ax.plot([x, x], [0.3, 0.7], color='black', linewidth=1.5)
+        scale_ax.text(x, 0.8, f"{int(x)}", ha='center', fontsize=9)
+
+    scale_ax.text(scale_km/2, -0.15, "Kilometers", ha='center', fontsize=9.5, fontweight='bold')
+    scale_ax.axis("off")
+
+    footer = "Source: Sentinel-1 Dual-Pol SAR | Analysis Engine: Google Earth Engine"
+    fig.text(0.05, 0.04, footer, fontsize=8, color='gray')
+
+    output_name = f"{name}_{date}_map.pdf"
+    plt.savefig(output_name, dpi=300, bbox_inches='tight', format='pdf')
+    plt.close()
+
+    return output_name
+
+# =========================================================
+# GENERATE REPORT PDF
+# =========================================================
+def generate_report_pdf(flood, water, region, name, user_date, sat_date, area, mode):
+    output_name = f"{name}_{sat_date}_report.pdf"
+
+    doc = SimpleDocTemplate(
+        output_name,
+        rightMargin=40, leftMargin=40,
+        topMargin=35, bottomMargin=35
+    )
+
+    styles = getSampleStyleSheet()
+
+    title_style = ParagraphStyle('title_style', parent=styles['Title'], alignment=TA_CENTER, fontSize=18, leading=22, spaceAfter=18)
+    heading_style = ParagraphStyle('heading_style', parent=styles['Heading2'], fontSize=13, leading=16, textColor=colors.HexColor('#0B4FA2'))
+    body_style = ParagraphStyle('body_style', parent=styles['BodyText'], alignment=TA_JUSTIFY, fontSize=10.5, leading=16, spaceAfter=10)
+    footer_style = ParagraphStyle('footer_style', parent=styles['BodyText'], alignment=TA_JUSTIFY, fontSize=8.5, leading=12, textColor=colors.grey)
+
+    area_name = f"{name} District" if mode == "district" else f"{name} State"
+
+    location_text = f"""
+    The flood situation across <b>{area_name}</b> was evaluated using Synthetic Aperture Radar (SAR)
+    data from Copernicus Sentinel-1 dual-polarization (VV + VH) collected on <b>{sat_date}</b>.<br/><br/>
+    SAR penetrates cloud cover to map standing water. The spatial inundation estimate shows 
+    approximately <b>{round(area,2):,} hectares</b> flooded across the region.
+    """
+
+    table_data = [
+        ["Parameter", "Details"],
+        ["Study Area", area_name],
+        ["Requested Date", user_date],
+        ["Satellite Date", sat_date],
+        ["Sensor Type", "Sentinel-1 SAR (VV + VH Dual-Pol)"],
+        ["Inundated Area", f"{round(area,2):,} ha"]
+    ]
+
+    table = Table(table_data, colWidths=[180, 270])
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#0B4FA2')),
+        ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+        ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
+        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+        ('BACKGROUND', (0,1), (-1,-1), colors.HexColor('#f8f9fa'))
+    ]))
+
+    outlook_text = """
+    Satellite monitoring supports emergency planning, damage assessment, and disaster relief logistics.
+    Periodic multi-temporal observations track the recession of floodwaters over time.
+    """
+
+    footer = "<i>Note: Inundation maps are generated from automated dual-polarization SAR thresholding and speckle filtering.</i>"
+
+    content = [
+        Paragraph(f"{area_name} Flood Analysis Report", title_style),
+        Spacer(1, 10),
+        table,
+        Spacer(1, 15),
+        Paragraph("Executive Summary", heading_style),
+        Spacer(1, 6),
+        Paragraph(location_text, body_style),
+        Spacer(1, 12),
+        Paragraph("Monitoring & Relief Outlook", heading_style),
+        Spacer(1, 6),
+        Paragraph(outlook_text, body_style),
+        Spacer(1, 15),
+        Paragraph(footer, footer_style)
+    ]
+
+    doc.build(content)
+    return output_name
