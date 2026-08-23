@@ -1,27 +1,9 @@
-import json
-import ee
-import streamlit as st
-
-@st.cache_resource
-def init_ee():
-    if "gcp_service_account" in st.secrets:
-        # Cloud deployment mode (Streamlit Community Cloud)
-        creds_dict = json.loads(st.secrets["gcp_service_account"])
-        credentials = ee.ServiceAccountCredentials(
-            creds_dict["client_email"],
-            key_data=json.dumps(creds_dict)
-        )
-        ee.Initialize(credentials, project='rare-host-474609-d8')
-    else:
-        # Local development mode
-        ee.Initialize(project='rare-host-474609-d8')
-
-
 # =========================================================
 # modules/flood_module.py
 # =========================================================
 
 import os
+import json
 import ee
 import folium
 import requests
@@ -67,13 +49,25 @@ except ImportError:
     HAS_DRIVE_API = False
 
 # =========================================================
-# INIT EARTH ENGINE
+# INIT EARTH ENGINE (CLOUD + LOCAL DUAL AUTH)
 # =========================================================
 @st.cache_resource
 def init_ee():
-    ee.Initialize(
-        project='rare-host-474609-d8'
-    )
+    """Initializes Earth Engine via GCP Service Account in Cloud, or local CLI auth locally."""
+    try:
+        if "gcp_service_account" in st.secrets:
+            # Cloud mode: Reads service account JSON from Streamlit Secrets
+            creds_dict = json.loads(st.secrets["gcp_service_account"])
+            credentials = ee.ServiceAccountCredentials(
+                creds_dict["client_email"],
+                key_data=json.dumps(creds_dict)
+            )
+            ee.Initialize(credentials, project='rare-host-474609-d8')
+        else:
+            # Local development mode
+            ee.Initialize(project='rare-host-474609-d8')
+    except Exception as e:
+        st.error(f"Earth Engine Initialization Error: {e}")
 
 # =========================================================
 # FETCH ADMIN DISTRICT & STATE LISTS FOR DROPDOWN
@@ -265,10 +259,6 @@ def find_date(region, user_date):
 # DUAL-POLARIZATION SAR PROCESSING (VV + VH SIGMA NAUGHT)
 # =========================================================
 def get_sar(region, start, end):
-    """
-    Retrieves Sentinel-1 S1_GRD dual-pol sigma naught (VV + VH) bands,
-    applies specular/volume ratios, and crops to region.
-    """
     col = ee.ImageCollection("COPERNICUS/S1_GRD") \
         .filterBounds(region) \
         .filterDate(start, end) \
@@ -276,9 +266,7 @@ def get_sar(region, start, end):
         .select(['VV', 'VH']) \
         .median()
 
-    # Calculate VV/VH cross-polarization ratio
     vv_vh_ratio = col.select('VV').subtract(col.select('VH')).rename('VV_VH_ratio')
-
     return col.addBands(vv_vh_ratio)
 
 # =========================================================
@@ -294,32 +282,21 @@ def get_permanent_water(region):
 # DUAL-POL CURRENT WATER EXTRACTION
 # =========================================================
 def get_water(img):
-    """
-    Dual-polarization multi-threshold water extraction pipeline.
-    Combines specular scattering (VV) with volume depolarization (VH).
-    """
     vv = img.select('VV')
     vh = img.select('VH')
 
-    # Apply Focal Median Speckle Filter to both channels
     vv_filtered = vv.focal_median(30, 'circle', 'meters')
     vh_filtered = vh.focal_median(30, 'circle', 'meters')
 
-    # Dual-Pol Thresholding Logic:
-    # 1. VV < -17.5 dB (Open water specular backscatter drop)
-    # 2. VH < -24.0 dB (Smooth water cross-polarization drop)
     open_water_vv = vv_filtered.lt(-17.5)
     open_water_vh = vh_filtered.lt(-24.0)
     
-    # Combined water mask (Both VV and VH conditions met)
     water_mask = open_water_vv.And(open_water_vh)
 
-    # SRTM DEM Slope Mask (< 3 degrees)
     dem = ee.Image('USGS/SRTMGL1_003')
     slope = ee.Terrain.slope(dem)
     water_mask = water_mask.updateMask(slope.lt(3))
 
-    # Remove isolated speckle noise patches (< 10 connected pixels)
     pixel_count = water_mask.connectedPixelCount(maxSize=100, eightConnected=True)
     water_mask = water_mask.updateMask(pixel_count.gte(10))
 
@@ -329,10 +306,6 @@ def get_water(img):
 # GEOTIFF RASTER EXPORT FUNCTION (BYPASSES 50MB LIMIT)
 # =========================================================
 def get_flood_raster_url(flood, region, name, mode="district"):
-    """
-    Generates a GeoTIFF download URL optimized to stay below GEE's 50MB limit.
-    Uses 30m resolution for districts and 100m for entire states.
-    """
     export_scale = 30 if mode == "district" else 100
     simple_geom = region.simplify(maxError=500)
     export_image = flood.unmask(0).byte()
