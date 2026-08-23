@@ -55,13 +55,15 @@ except ImportError:
 # =========================================================
 # INIT EARTH ENGINE (SAFE INTERNAL STATE CHECK)
 # =========================================================
+# =========================================================
+# INIT EARTH ENGINE
+# =========================================================
 def init_ee():
-    """Initializes Earth Engine safely without accessing private api attributes."""
-    # Safe check if EE is already initialized
+    """Initializes Earth Engine safely without accessing private internals."""
+    # Check if GEE is already initialized in this runtime
     try:
-        if ee.data.get_persistent_credentials() is not None or getattr(ee.data, '_state', None) is not None:
-            if getattr(ee.data._state, 'cloud_api_resource', None) is not None:
-                return
+        ee.Number(1).getInfo()
+        return
     except Exception:
         pass
 
@@ -89,7 +91,7 @@ def init_ee():
         else:
             ee.Initialize(project='rare-host-474609-d8')
     except Exception as e:
-        st.error(f"Earth Engine Initialization Error: {e}")
+        st.error(f"Earth Engine Initialization Failed: {e}")
         st.stop()  # Stop Streamlit execution immediately so it doesn't crash downstream with _NOT_INITIALIZED_MESSAGE
 
 # =========================================================

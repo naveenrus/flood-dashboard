@@ -4,12 +4,12 @@
 
 import os
 import time
-import importlib
+#import importlib
 import streamlit as st
 import modules.flood_module as fm
 
 # Force dynamic module reloading
-importlib.reload(fm)
+#importlib.reload(fm)
 
 st.set_page_config(
     page_title="Flood Intelligence System",
