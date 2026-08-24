@@ -359,7 +359,6 @@ st.markdown("""
             🌊 AWARE INDIA: Advanced Flood Mapping System
         </p>
         <p style="margin: 4px 0 0 0; font-size: 11px; color: #38bdf8;">
-            Designed & Developed by <b>Naveen Bussari</b> | National Remote Sensing Centre (NRSC)
-        </p>
+            Designed & Developed by <b>Naveen Bussari</b></p>
     </div>
 """, unsafe_allow_html=True)
