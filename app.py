@@ -5,6 +5,7 @@
 import os
 import time
 import streamlit as st
+from streamlit_folium import st_folium
 import modules.flood_module as fm
 
 st.set_page_config(
@@ -14,17 +15,11 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom Styling & Hard Scroll Lock JavaScript Injection
+# Custom Styling
 st.markdown("""
     <style>
-    /* Prevent browser from auto-scrolling to active focus anchors */
-    html, body, [data-testid="stAppViewContainer"], [data-testid="stMain"], [data-testid="stBlock"] {
-        overflow-anchor: none !important;
-        scroll-behavior: auto !important;
-    }
-
     .block-container {
-        padding-top: 3.5rem !important;
+        padding-top: 2rem !important;
         padding-left: 0.8rem !important;
         padding-right: 0.8rem !important;
         padding-bottom: 0rem !important;
@@ -57,27 +52,9 @@ st.markdown("""
         margin-top: 4px;
     }
     </style>
-
-    <script>
-    // Prevent Streamlit components (Folium Map iframe) from auto-scrolling page on click/focus
-    (function() {
-        const preventIframeScroll = function(e) {
-            if (e.target.tagName === 'IFRAME') {
-                const scrollY = window.scrollY;
-                const scrollX = window.scrollX;
-                setTimeout(function() {
-                    window.scrollTo(scrollX, scrollY);
-                }, 0);
-            }
-        };
-        document.addEventListener('focusin', preventIframeScroll, true);
-        document.addEventListener('mousedown', preventIframeScroll, true);
-        document.addEventListener('touchstart', preventIframeScroll, true);
-    })();
-    </script>
 """, unsafe_allow_html=True)
 
-# Centered Modern Header Banner
+# Centered Header Banner
 st.markdown("""
     <div style="
         display: flex;
@@ -138,7 +115,8 @@ st.markdown("""
         width: 100%;
     ">
         <div style="white-space: nowrap;">🛰️ <b>SENSOR:</b> Sentinel-1 C-Band SAR </div>
-        <div style="white-space: nowrap;">🌐 <b>ENGINE:</b> Google Earth Engine </div>
+        
+        <div style="white-space: nowrap;">🌐 <b>ENGINE:</b> Google Earth </div>
     </div>
 """, unsafe_allow_html=True)
 
@@ -193,7 +171,7 @@ if run_btn:
 # DEFAULT VIEW: DIRECT FULL-FRAME MAP DISPLAY
 if st.session_state.result is None:
     default_m = fm.get_default_india_map()
-    st.components.v1.html(default_m._repr_html_(), height=650, scrolling=False)
+    st_folium(default_m, width="100%", height=650, returned_objects=[])
 
 # VIEW AFTER ANALYSIS EXECUTION
 else:
@@ -249,7 +227,7 @@ else:
         map_col, action_col = st.columns([3.2, 1.2])
 
         with map_col:
-            st.components.v1.html(m._repr_html_(), height=650, scrolling=False)
+            st_folium(m, width="100%", height=650, returned_objects=[])
 
         with action_col:
             tab1, tab2 = st.tabs(["📄 Export Reports", "🌐 GIS Spatial Data"])
