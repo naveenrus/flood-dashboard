@@ -14,9 +14,14 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom Styling (Fixed Top Padding to prevent banner clipping)
+# Custom Styling (Locks container scroll on map interaction)
 st.markdown("""
     <style>
+    /* Prevent iframe focus scroll jumping */
+    html, body, [data-testid="stAppViewContainer"] {
+        overflow-anchor: none !important;
+    }
+
     .block-container {
         padding-top: 3.5rem !important;
         padding-left: 0.8rem !important;
@@ -53,7 +58,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Centered Modern Header Banner (Updated Title)
+# Centered Modern Header Banner
 st.markdown("""
     <div style="
         display: flex;
@@ -94,7 +99,7 @@ st.markdown("""
     </div>
 """, unsafe_allow_html=True)
 
-# Technical Metadata Ribbon (Single Responsive Instance)
+# Technical Metadata Ribbon
 st.markdown("""
     <div style="
         display: flex;
@@ -167,10 +172,10 @@ if run_btn:
 # MAIN DISPLAY AREA
 # =========================================================
 
-# DEFAULT VIEW: DIRECT FULL-FRAME MAP DISPLAY
+# DEFAULT VIEW: DIRECT FULL-FRAME MAP DISPLAY (Height adjusted to 620px to fit screen)
 if st.session_state.result is None:
     default_m = fm.get_default_india_map()
-    st.components.v1.html(default_m._repr_html_(), height=750)
+    st.components.v1.html(default_m._repr_html_(), height=620)
 
 # VIEW AFTER ANALYSIS EXECUTION
 else:
@@ -226,7 +231,7 @@ else:
         map_col, action_col = st.columns([3.2, 1.2])
 
         with map_col:
-            st.components.v1.html(m._repr_html_(), height=720)
+            st.components.v1.html(m._repr_html_(), height=620)
 
         with action_col:
             tab1, tab2 = st.tabs(["📄 Export Reports", "🌐 GIS Spatial Data"])
