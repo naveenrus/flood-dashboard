@@ -83,7 +83,7 @@ st.markdown("""
             letter-spacing: -0.5px;
             text-align: center;
         ">
-            🌊 AWARE INDIA: Advanced Flood Mapping System
+            🌊 Near-Real-Time SAR Sentinel Flood Monitoring Portal
         </div>
         <div style="
             position: absolute;
