@@ -123,7 +123,7 @@ st.markdown("""
         width: 100%;
     ">
         <div style="white-space: nowrap;">🛰️ <b>SENSOR:</b> Sentinel-1 C-Band SAR</div>
-        <div style="white-space: nowrap;">🌐 <b>ENGINE:</b> Google Earth Engine</div>
+        <div style="white-space: nowrap;">🌐 <b>ENGINE:</b> Google Earth</div>
     </div>
 """, unsafe_allow_html=True)
 
