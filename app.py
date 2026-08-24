@@ -19,41 +19,29 @@ st.set_page_config(
 )
 
 # Custom Styling (Maximized Map Viewport + Layout Tuning)
+# Fixed Metadata Technical Ribbon (Responsive Flex Layout)
 st.markdown("""
-    <style>
-    .block-container {
-        padding-top: 1.5rem !important;
-        padding-left: 0.8rem !important;
-        padding-right: 0.8rem !important;
-        padding-bottom: 0rem !important;
-        max-width: 98% !important;
-    }
-    
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-
-    .metric-card {
-        background: #ffffff;
-        border: 1px solid #e2e8f0;
-        border-left: 5px solid #0284c7;
-        padding: 14px;
-        border-radius: 10px;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
-    }
-    .metric-label {
-        font-size: 11px;
-        font-weight: 700;
-        color: #64748b;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-    }
-    .metric-value {
-        font-size: 20px;
-        font-weight: 800;
-        color: #0f172a;
-        margin-top: 4px;
-    }
-    </style>
+    <div style="
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        background: #0f172a;
+        border: 1px solid #1e293b;
+        color: #94a3b8;
+        padding: 10px 16px;
+        border-radius: 8px;
+        margin-bottom: 14px;
+        font-family: monospace;
+        font-size: 12px;
+        box-sizing: border-box;
+        width: 100%;
+    ">
+        <div style="white-space: nowrap;">🛰️ <b>SENSOR:</b> Sentinel-1 C-Band SAR (VV + VH)</div>
+        <div style="white-space: nowrap;">⚡ <b>PROCESSING:</b> Speckle Filtered & DEM Masked</div>
+        <div style="white-space: nowrap;">🌐 <b>ENGINE:</b> Google Earth Engine (10m Native)</div>
+    </div>
 """, unsafe_allow_html=True)
 
 # Centered Modern Header Banner
