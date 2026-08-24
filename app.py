@@ -14,17 +14,17 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom Styling (Locks Scroll Position & Prevents Iframe Auto-Focus Jump)
+# Custom Styling (Locks Scroll Position & Responsive Headers)
 st.markdown("""
     <style>
-    /* Stop auto-scrolling when clicking map elements */
+    /* Prevent auto-scrolling when interacting with iframe elements */
     html, body, [data-testid="stAppViewContainer"], [data-testid="stMain"] {
         overflow-anchor: none !important;
         scroll-behavior: auto !important;
     }
 
     .block-container {
-        padding-top: 3.2rem !important;
+        padding-top: 3.5rem !important;
         padding-left: 0.8rem !important;
         padding-right: 0.8rem !important;
         padding-bottom: 0rem !important;
@@ -34,14 +34,6 @@ st.markdown("""
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header[data-testid="stHeader"] {background: transparent !important;}
-
-    /* Map container wrapper */
-    .map-wrapper {
-        width: 100%;
-        height: 650px;
-        border-radius: 8px;
-        overflow: hidden;
-    }
 
     .metric-card {
         background: #ffffff;
@@ -65,16 +57,6 @@ st.markdown("""
         margin-top: 4px;
     }
     </style>
-
-    <script>
-    // JS Guard to catch iframe focus events and restore scroll position
-    window.addEventListener('blur', function() {
-        if (document.activeElement.tagName === 'IFRAME') {
-            const currentY = window.scrollY;
-            setTimeout(function() { window.scrollTo(0, currentY); }, 0);
-        }
-    });
-    </script>
 """, unsafe_allow_html=True)
 
 # Centered Modern Header Banner
