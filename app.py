@@ -20,27 +20,69 @@ st.set_page_config(
 
 # Custom Styling (Maximized Map Viewport + Layout Tuning)
 # Fixed Metadata Technical Ribbon (Responsive Flex Layout)
+# Centered Modern Header Banner
+st.markdown("""
+    <div style="
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+        background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+        padding: 12px 24px;
+        border-radius: 10px;
+        border: 1px solid #334155;
+        margin-bottom: 12px;
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+    ">
+        <div style="
+            font-family: 'Inter', sans-serif;
+            font-size: 22px;
+            font-weight: 800;
+            color: #f8fafc;
+            margin: 0;
+            letter-spacing: -0.5px;
+            text-align: center;
+        ">
+            🌊 Flood Intelligence System
+        </div>
+        <div style="
+            position: absolute;
+            right: 20px;
+            background: rgba(16, 185, 129, 0.15);
+            color: #34d399;
+            border: 1px solid rgba(52, 211, 153, 0.3);
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 700;
+        ">
+            ● ENGINE ONLINE
+        </div>
+    </div>
+""", unsafe_allow_html=True)
+
+# Single Responsive Technical Ribbon
 st.markdown("""
     <div style="
         display: flex;
         flex-wrap: wrap;
         align-items: center;
-        justify-content: space-between;
-        gap: 10px;
+        justify-content: space-around;
+        gap: 12px;
         background: #0f172a;
         border: 1px solid #1e293b;
         color: #94a3b8;
         padding: 10px 16px;
         border-radius: 8px;
-        margin-bottom: 14px;
+        margin-bottom: 16px;
         font-family: monospace;
         font-size: 12px;
         box-sizing: border-box;
         width: 100%;
     ">
-        <div style="white-space: nowrap;">🛰️ <b>SENSOR:</b> Sentinel-1 C-Band SAR (VV + VH)</div>
-        <div style="white-space: nowrap;">⚡ <b>PROCESSING:</b> Speckle Filtered & DEM Masked</div>
-        <div style="white-space: nowrap;">🌐 <b>ENGINE:</b> Google Earth Engine (10m Native)</div>
+        <div style="white-space: nowrap;">🛰️ <b>SENSOR:</b> Sentinel-1 C-Band SAR</div>
+        <div style="white-space: nowrap;">⚡ <b>PROCESSING:</b> Flood Mapping</div>
+        <div style="white-space: nowrap;">🌐 <b>ENGINE:</b> Google Earth Engine</div>
     </div>
 """, unsafe_allow_html=True)
 
