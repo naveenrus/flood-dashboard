@@ -14,11 +14,11 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom Styling (Locks Scroll Position & Responsive Headers)
+# Custom Styling & Hard Scroll Lock JavaScript Injection
 st.markdown("""
     <style>
-    /* Prevent auto-scrolling when interacting with iframe elements */
-    html, body, [data-testid="stAppViewContainer"], [data-testid="stMain"] {
+    /* Prevent browser from auto-scrolling to active focus anchors */
+    html, body, [data-testid="stAppViewContainer"], [data-testid="stMain"], [data-testid="stBlock"] {
         overflow-anchor: none !important;
         scroll-behavior: auto !important;
     }
@@ -57,6 +57,24 @@ st.markdown("""
         margin-top: 4px;
     }
     </style>
+
+    <script>
+    // Prevent Streamlit components (Folium Map iframe) from auto-scrolling page on click/focus
+    (function() {
+        const preventIframeScroll = function(e) {
+            if (e.target.tagName === 'IFRAME') {
+                const scrollY = window.scrollY;
+                const scrollX = window.scrollX;
+                setTimeout(function() {
+                    window.scrollTo(scrollX, scrollY);
+                }, 0);
+            }
+        };
+        document.addEventListener('focusin', preventIframeScroll, true);
+        document.addEventListener('mousedown', preventIframeScroll, true);
+        document.addEventListener('touchstart', preventIframeScroll, true);
+    })();
+    </script>
 """, unsafe_allow_html=True)
 
 # Centered Modern Header Banner
@@ -119,9 +137,8 @@ st.markdown("""
         box-sizing: border-box;
         width: 100%;
     ">
-        <div style="white-space: nowrap;">🛰️ <b>SENSOR:</b> Sentinel-1 C-Band SAR (VV + VH)</div>
-        <div style="white-space: nowrap;">⚡ <b>PROCESSING:</b> Speckle Filtered & DEM Masked</div>
-        <div style="white-space: nowrap;">🌐 <b>ENGINE:</b> Google Earth Engine (10m Native)</div>
+        <div style="white-space: nowrap;">🛰️ <b>SENSOR:</b> Sentinel-1 C-Band SAR </div>
+        <div style="white-space: nowrap;">🌐 <b>ENGINE:</b> Google Earth Engine </div>
     </div>
 """, unsafe_allow_html=True)
 
