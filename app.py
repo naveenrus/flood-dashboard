@@ -14,16 +14,17 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom Styling (Locks container scroll on map interaction)
+# Custom Styling (Locks Scroll Position & Prevents Iframe Auto-Focus Jump)
 st.markdown("""
     <style>
-    /* Prevent iframe focus scroll jumping */
-    html, body, [data-testid="stAppViewContainer"] {
+    /* Stop auto-scrolling when clicking map elements */
+    html, body, [data-testid="stAppViewContainer"], [data-testid="stMain"] {
         overflow-anchor: none !important;
+        scroll-behavior: auto !important;
     }
 
     .block-container {
-        padding-top: 3.5rem !important;
+        padding-top: 3.2rem !important;
         padding-left: 0.8rem !important;
         padding-right: 0.8rem !important;
         padding-bottom: 0rem !important;
@@ -33,6 +34,14 @@ st.markdown("""
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header[data-testid="stHeader"] {background: transparent !important;}
+
+    /* Map container wrapper */
+    .map-wrapper {
+        width: 100%;
+        height: 650px;
+        border-radius: 8px;
+        overflow: hidden;
+    }
 
     .metric-card {
         background: #ffffff;
@@ -56,6 +65,16 @@ st.markdown("""
         margin-top: 4px;
     }
     </style>
+
+    <script>
+    // JS Guard to catch iframe focus events and restore scroll position
+    window.addEventListener('blur', function() {
+        if (document.activeElement.tagName === 'IFRAME') {
+            const currentY = window.scrollY;
+            setTimeout(function() { window.scrollTo(0, currentY); }, 0);
+        }
+    });
+    </script>
 """, unsafe_allow_html=True)
 
 # Centered Modern Header Banner
@@ -172,10 +191,10 @@ if run_btn:
 # MAIN DISPLAY AREA
 # =========================================================
 
-# DEFAULT VIEW: DIRECT FULL-FRAME MAP DISPLAY (Height adjusted to 620px to fit screen)
+# DEFAULT VIEW: DIRECT FULL-FRAME MAP DISPLAY
 if st.session_state.result is None:
     default_m = fm.get_default_india_map()
-    st.components.v1.html(default_m._repr_html_(), height=620)
+    st.components.v1.html(default_m._repr_html_(), height=650, scrolling=False)
 
 # VIEW AFTER ANALYSIS EXECUTION
 else:
@@ -231,7 +250,7 @@ else:
         map_col, action_col = st.columns([3.2, 1.2])
 
         with map_col:
-            st.components.v1.html(m._repr_html_(), height=620)
+            st.components.v1.html(m._repr_html_(), height=650, scrolling=False)
 
         with action_col:
             tab1, tab2 = st.tabs(["📄 Export Reports", "🌐 GIS Spatial Data"])
