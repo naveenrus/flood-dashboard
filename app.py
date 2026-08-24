@@ -15,17 +15,18 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom Styling & Multi-Layer Viewport Scroll Lock
+# Custom Styling (HARD DISABLE Viewport & Container Scroll)
 st.markdown("""
     <style>
-    /* Prevent Streamlit container and browser viewport auto-scrolling */
+    /* Freeze parent containers to prevent iframe focus-scrolling */
     html, body, [data-testid="stAppViewContainer"], [data-testid="stMain"], .main {
+        overflow: hidden !important;
+        overflow-y: auto !important;
         overflow-anchor: none !important;
-        scroll-behavior: auto !important;
     }
     
     .block-container {
-        padding-top: 2.8rem !important;
+        padding-top: 1.5rem !important;
         padding-left: 0.8rem !important;
         padding-right: 0.8rem !important;
         padding-bottom: 0rem !important;
@@ -41,8 +42,8 @@ st.markdown("""
         background: #ffffff;
         border: 1px solid #e2e8f0;
         border-left: 5px solid #0284c7;
-        padding: 14px;
-        border-radius: 10px;
+        padding: 12px;
+        border-radius: 8px;
         box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
     }
     .metric-label {
@@ -53,30 +54,12 @@ st.markdown("""
         letter-spacing: 0.5px;
     }
     .metric-value {
-        font-size: 20px;
+        font-size: 18px;
         font-weight: 800;
         color: #0f172a;
-        margin-top: 4px;
+        margin-top: 2px;
     }
     </style>
-
-    <script>
-    // JS Guard: Prevent iframe element focus from triggering scrollIntoView
-    (function() {
-        const lockScroll = function(e) {
-            if (e.target && e.target.tagName === 'IFRAME') {
-                const y = window.scrollY || window.pageYOffset;
-                const x = window.scrollX || window.pageXOffset;
-                requestAnimationFrame(function() {
-                    window.scrollTo(x, y);
-                });
-            }
-        };
-        document.addEventListener('focusin', lockScroll, true);
-        document.addEventListener('mousedown', lockScroll, true);
-        document.addEventListener('touchstart', lockScroll, true);
-    })();
-    </script>
 """, unsafe_allow_html=True)
 
 # Centered Modern Header Banner
@@ -87,15 +70,15 @@ st.markdown("""
         justify-content: center;
         position: relative;
         background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-        padding: 12px 24px;
-        border-radius: 10px;
+        padding: 10px 20px;
+        border-radius: 8px;
         border: 1px solid #334155;
-        margin-bottom: 12px;
+        margin-bottom: 8px;
         box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
     ">
         <div style="
             font-family: 'Inter', sans-serif;
-            font-size: 22px;
+            font-size: 20px;
             font-weight: 800;
             color: #f8fafc;
             margin: 0;
@@ -131,11 +114,11 @@ st.markdown("""
         background: #0f172a;
         border: 1px solid #1e293b;
         color: #94a3b8;
-        padding: 10px 16px;
+        padding: 8px 14px;
         border-radius: 8px;
-        margin-bottom: 16px;
+        margin-bottom: 10px;
         font-family: monospace;
-        font-size: 12px;
+        font-size: 11px;
         box-sizing: border-box;
         width: 100%;
     ">
@@ -192,10 +175,10 @@ if run_btn:
 # MAIN DISPLAY AREA
 # =========================================================
 
-# DEFAULT VIEW: DIRECT FULL-FRAME MAP DISPLAY
+# DEFAULT VIEW: DIRECT FULL-FRAME MAP DISPLAY (Height adjusted to 580px for zero-scroll fit)
 if st.session_state.result is None:
     default_m = fm.get_default_india_map()
-    st_folium(default_m, width="100%", height=650, returned_objects=[])
+    st_folium(default_m, width="100%", height=580, returned_objects=[])
 
 # VIEW AFTER ANALYSIS EXECUTION
 else:
@@ -241,7 +224,7 @@ else:
             st.markdown(f"""
                 <div class="metric-card">
                     <div class="metric-label">Impact Assessment</div>
-                    <div class="metric-value" style="font-size: 16px;">{severity_label}</div>
+                    <div class="metric-value" style="font-size: 15px;">{severity_label}</div>
                 </div>
             """, unsafe_allow_html=True)
 
@@ -251,7 +234,7 @@ else:
         map_col, action_col = st.columns([3.2, 1.2])
 
         with map_col:
-            st_folium(m, width="100%", height=650, returned_objects=[])
+            st_folium(m, width="100%", height=580, returned_objects=[])
 
         with action_col:
             tab1, tab2 = st.tabs(["📄 Export Reports", "🌐 GIS Spatial Data"])
@@ -362,20 +345,20 @@ else:
 # =========================================================
 st.markdown("""
     <div style="
-        margin-top: 40px;
-        padding: 16px;
+        margin-top: 30px;
+        padding: 12px;
         background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
         border-top: 2px solid #334155;
-        border-radius: 10px;
+        border-radius: 8px;
         text-align: center;
         color: #94a3b8;
         font-family: 'Inter', sans-serif;
-        font-size: 13px;
+        font-size: 12px;
     ">
         <p style="margin: 0; font-weight: 600; color: #e2e8f0;">
             🌊 AWARE INDIA: Advanced Flood Mapping System
         </p>
-        <p style="margin: 4px 0 0 0; font-size: 12px; color: #38bdf8;">
+        <p style="margin: 4px 0 0 0; font-size: 11px; color: #38bdf8;">
             Designed & Developed by <b>Naveen Bussari</b> | National Remote Sensing Centre (NRSC)
         </p>
     </div>
