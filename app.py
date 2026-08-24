@@ -5,7 +5,6 @@
 import os
 import time
 import streamlit as st
-from streamlit_folium import st_folium
 import modules.flood_module as fm
 
 st.set_page_config(
@@ -15,18 +14,17 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom Styling (HARD DISABLE Viewport & Container Scroll)
+# Custom Styling (Locks Viewport to Prevent Iframe Scroll Jumping)
 st.markdown("""
     <style>
-    /* Freeze parent containers to prevent iframe focus-scrolling */
+    /* Disable anchor auto-scrolling on iframe focus */
     html, body, [data-testid="stAppViewContainer"], [data-testid="stMain"], .main {
-        overflow: hidden !important;
-        overflow-y: auto !important;
         overflow-anchor: none !important;
+        scroll-behavior: auto !important;
     }
     
     .block-container {
-        padding-top: 1.5rem !important;
+        padding-top: 2rem !important;
         padding-left: 0.8rem !important;
         padding-right: 0.8rem !important;
         padding-bottom: 0rem !important;
@@ -123,7 +121,7 @@ st.markdown("""
         width: 100%;
     ">
         <div style="white-space: nowrap;">🛰️ <b>SENSOR:</b> Sentinel-1 C-Band SAR</div>
-        <div style="white-space: nowrap;">🌐 <b>ENGINE:</b> Google Earth</div>
+        <div style="white-space: nowrap;">🌐 <b>ENGINE:</b> Google Earth </div>
     </div>
 """, unsafe_allow_html=True)
 
@@ -175,10 +173,11 @@ if run_btn:
 # MAIN DISPLAY AREA
 # =========================================================
 
-# DEFAULT VIEW: DIRECT FULL-FRAME MAP DISPLAY (Height adjusted to 580px for zero-scroll fit)
+# DEFAULT VIEW: DIRECT FULL-FRAME MAP DISPLAY
 if st.session_state.result is None:
     default_m = fm.get_default_india_map()
-    st_folium(default_m, width="100%", height=580, returned_objects=[])
+    map_html = f"<div style='height:620px; overflow:hidden; border-radius:8px;'>{default_m._repr_html_()}</div>"
+    st.components.v1.html(map_html, height=620, scrolling=False)
 
 # VIEW AFTER ANALYSIS EXECUTION
 else:
@@ -234,7 +233,8 @@ else:
         map_col, action_col = st.columns([3.2, 1.2])
 
         with map_col:
-            st_folium(m, width="100%", height=580, returned_objects=[])
+            map_html = f"<div style='height:620px; overflow:hidden; border-radius:8px;'>{m._repr_html_()}</div>"
+            st.components.v1.html(map_html, height=620, scrolling=False)
 
         with action_col:
             tab1, tab2 = st.tabs(["📄 Export Reports", "🌐 GIS Spatial Data"])
@@ -359,6 +359,7 @@ st.markdown("""
             🌊 AWARE INDIA: Advanced Flood Mapping System
         </p>
         <p style="margin: 4px 0 0 0; font-size: 11px; color: #38bdf8;">
-            Designed & Developed by <b>Naveen </b> </p>
+            Designed & Developed by <b>Naveen Bussari</b> | National Remote Sensing Centre (NRSC)
+        </p>
     </div>
 """, unsafe_allow_html=True)
