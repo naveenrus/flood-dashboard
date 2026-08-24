@@ -8,17 +8,17 @@ import streamlit as st
 import modules.flood_module as fm
 
 st.set_page_config(
-    page_title="Flood Intelligence System",
+    page_title="AWARE INDIA - Flood Mapping",
     page_icon="🌊",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Custom Styling (Maximized Map Viewport + Layout Tuning)
+# Custom Styling (Fixed Top Padding to prevent banner clipping)
 st.markdown("""
     <style>
     .block-container {
-        padding-top: 1.5rem !important;
+        padding-top: 3.5rem !important;
         padding-left: 0.8rem !important;
         padding-right: 0.8rem !important;
         padding-bottom: 0rem !important;
@@ -27,6 +27,7 @@ st.markdown("""
     
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
+    header[data-testid="stHeader"] {background: transparent !important;}
 
     .metric-card {
         background: #ffffff;
@@ -52,7 +53,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Centered Modern Header Banner (Single Instance)
+# Centered Modern Header Banner (Updated Title)
 st.markdown("""
     <div style="
         display: flex;
@@ -75,7 +76,7 @@ st.markdown("""
             letter-spacing: -0.5px;
             text-align: center;
         ">
-            🌊 Flood Intelligence System
+            🌊 AWARE INDIA: Advanced Flood Mapping System
         </div>
         <div style="
             position: absolute;
@@ -347,7 +348,7 @@ st.markdown("""
         font-size: 13px;
     ">
         <p style="margin: 0; font-weight: 600; color: #e2e8f0;">
-            🌊 Flood Intelligence System (AWARE INDIA)
+            🌊 AWARE INDIA: Advanced Flood Mapping System
         </p>
         <p style="margin: 4px 0 0 0; font-size: 12px; color: #38bdf8;">
             Designed & Developed by <b>Naveen Bussari</b> | National Remote Sensing Centre (NRSC)
