@@ -15,11 +15,17 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom Styling
+# Custom Styling & Multi-Layer Viewport Scroll Lock
 st.markdown("""
     <style>
+    /* Prevent Streamlit container and browser viewport auto-scrolling */
+    html, body, [data-testid="stAppViewContainer"], [data-testid="stMain"], .main {
+        overflow-anchor: none !important;
+        scroll-behavior: auto !important;
+    }
+    
     .block-container {
-        padding-top: 2rem !important;
+        padding-top: 2.8rem !important;
         padding-left: 0.8rem !important;
         padding-right: 0.8rem !important;
         padding-bottom: 0rem !important;
@@ -30,6 +36,7 @@ st.markdown("""
     footer {visibility: hidden;}
     header[data-testid="stHeader"] {background: transparent !important;}
 
+    /* Metric cards styling */
     .metric-card {
         background: #ffffff;
         border: 1px solid #e2e8f0;
@@ -52,9 +59,27 @@ st.markdown("""
         margin-top: 4px;
     }
     </style>
+
+    <script>
+    // JS Guard: Prevent iframe element focus from triggering scrollIntoView
+    (function() {
+        const lockScroll = function(e) {
+            if (e.target && e.target.tagName === 'IFRAME') {
+                const y = window.scrollY || window.pageYOffset;
+                const x = window.scrollX || window.pageXOffset;
+                requestAnimationFrame(function() {
+                    window.scrollTo(x, y);
+                });
+            }
+        };
+        document.addEventListener('focusin', lockScroll, true);
+        document.addEventListener('mousedown', lockScroll, true);
+        document.addEventListener('touchstart', lockScroll, true);
+    })();
+    </script>
 """, unsafe_allow_html=True)
 
-# Centered Header Banner
+# Centered Modern Header Banner
 st.markdown("""
     <div style="
         display: flex;
@@ -114,9 +139,8 @@ st.markdown("""
         box-sizing: border-box;
         width: 100%;
     ">
-        <div style="white-space: nowrap;">🛰️ <b>SENSOR:</b> Sentinel-1 C-Band SAR </div>
-        
-        <div style="white-space: nowrap;">🌐 <b>ENGINE:</b> Google Earth </div>
+        <div style="white-space: nowrap;">🛰️ <b>SENSOR:</b> Sentinel-1 C-Band SAR</div>
+        <div style="white-space: nowrap;">🌐 <b>ENGINE:</b> Google Earth Engine</div>
     </div>
 """, unsafe_allow_html=True)
 
