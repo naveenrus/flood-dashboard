@@ -8,7 +8,7 @@ import streamlit as st
 import modules.flood_module as fm
 
 st.set_page_config(
-    page_title="AWARE INDIA - Flood Mapping",
+    page_title="Near-Real-Time SAR Sentinel Flood Monitoring Portal",
     page_icon="🌊",
     layout="wide",
     initial_sidebar_state="expanded"
