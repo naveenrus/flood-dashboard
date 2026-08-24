@@ -8,7 +8,7 @@ import streamlit as st
 import modules.flood_module as fm
 
 st.set_page_config(
-    page_title="Near-Real-Time SAR Sentinel Flood Monitoring Portal",
+    page_title="Advanced Flood Mapping System",
     page_icon="🌊",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -81,7 +81,7 @@ st.markdown("""
             letter-spacing: -0.5px;
             text-align: center;
         ">
-            🌊 Advanced Flood Mapping System
+            🌊 Near-Real-Time SAR Sentinel Flood Monitoring Portal
         </div>
         <div style="
             position: absolute;
