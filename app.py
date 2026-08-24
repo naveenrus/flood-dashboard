@@ -8,7 +8,7 @@ import streamlit as st
 import modules.flood_module as fm
 
 st.set_page_config(
-    page_title="Advanced Flood Mapping System",
+    page_title="AWARE INDIA - Flood Mapping",
     page_icon="🌊",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -81,7 +81,7 @@ st.markdown("""
             letter-spacing: -0.5px;
             text-align: center;
         ">
-            🌊 Near-Real-Time SAR Sentinel Flood Monitoring Portal
+            🌊 AWARE INDIA: Advanced Flood Mapping System
         </div>
         <div style="
             position: absolute;
@@ -118,9 +118,8 @@ st.markdown("""
         box-sizing: border-box;
         width: 100%;
     ">
-        <div style="white-space: nowrap;">🛰️ <b>SENSOR:</b> Sentinel-1 C-Band SAR (VV + VH)</div>
-        <div style="white-space: nowrap;">⚡ <b>PROCESSING:</b> Speckle Filtered & DEM Masked</div>
-        <div style="white-space: nowrap;">🌐 <b>ENGINE:</b> Google Earth Engine (10m Native)</div>
+        <div style="white-space: nowrap;">🛰️ <b>SENSOR:</b> Sentinel-1 C-Band SAR</div>
+        <div style="white-space: nowrap;">🌐 <b>ENGINE:</b> Google Earth Engine</div>
     </div>
 """, unsafe_allow_html=True)
 
@@ -150,11 +149,6 @@ with st.sidebar:
         name = st.selectbox("Select State Name", states, index=default_idx)
 
     date = st.date_input("Select Observation Date")
-    
-    # Layer Display Customization Controls
-    st.markdown("---")
-    st.markdown("### 🎨 Visual Layer Controls")
-    layer_opacity = st.slider("Flood Mask Opacity", min_value=0.1, max_value=1.0, value=0.7, step=0.05)
 
     run_btn = st.button("🚀 Run Analysis", type="primary", use_container_width=True)
 
@@ -170,7 +164,7 @@ with st.sidebar:
         * **Sensor:** Sentinel-1 Synthetic Aperture Radar (SAR) Ground Range Detected (GRD).
         * **Polarization:** Dual-Pol VV & VH mode for water surface contrast.
         * **Speckle Filter:** Refined Lee Speckle Filter to remove granular radar noise.
-        * **Dem Masking:** HydroSHEDS DEM slope masking (>5%) applied to eliminate terrain shadows.
+        * **DEM Masking:** HydroSHEDS DEM slope masking (>5%) applied to eliminate terrain shadows.
         * **Thresholding:** OTSU Automated Thresholding on backscatter coefficients.
         """)
 
@@ -371,7 +365,7 @@ st.markdown("""
         font-size: 12px;
     ">
         <p style="margin: 0; font-weight: 600; color: #e2e8f0;">
-            🌊  Advanced Flood Mapping System
+            🌊 AWARE INDIA: Advanced Flood Mapping System
         </p>
         <p style="margin: 4px 0 0 0; font-size: 11px; color: #38bdf8;">
             Designed & Developed by <b>Naveen Bussari</b> | 📧 <a href="mailto:bussarinaveen18@gmail.com" style="color: #38bdf8; text-decoration: none;">bussarinaveen18@gmail.com</a>
