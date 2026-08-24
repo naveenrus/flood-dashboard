@@ -356,7 +356,7 @@ st.markdown("""
         font-size: 12px;
     ">
         <p style="margin: 0; font-weight: 600; color: #e2e8f0;">
-            🌊 AWARE INDIA: Advanced Flood Mapping System
+            🌊 Advanced Flood Mapping System
         </p>
         <p style="margin: 4px 0 0 0; font-size: 11px; color: #38bdf8;">
             Designed & Developed by <b>Naveen Bussari</b> | 📧 <a href="mailto:bussarinaveen18@gmail.com" style="color: #38bdf8; text-decoration: none;">bussarinaveen18@gmail.com</a>
