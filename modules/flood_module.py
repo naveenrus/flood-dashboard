@@ -254,34 +254,29 @@ def get_region(name, mode):
     return geom
 
 # =========================================================
-# FIND AVAILABLE SAR DATE (TYPE-SAFE DATE COMPARISON)
+# FIND AVAILABLE SAR DATE (STRICTLY HISTORICAL SEARCH)
 # =========================================================
 def find_date(region, user_date):
     """
-    Finds the exact or most recent Sentinel-1 SAR acquisition date 
-    on or before user_date over the target region.
+    Searches for the latest Sentinel-1 pass ON OR BEFORE the selected user_date.
     """
-    # 1. Convert user_date to datetime.date if passed as datetime
-    if isinstance(user_date, datetime):
-        user_date_obj = user_date.date()
+    # 1. Format target date string
+    if isinstance(user_date, (datetime, datetime.date)):
+        target_str = user_date.strftime("%Y-%m-%d")
     else:
-        user_date_obj = user_date
+        target_str = str(user_date)
+    
+    # Add 1 day to include acquisitions on the target date itself
+    end_date = (datetime.strptime(target_str, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
 
-    # 2. Compare using pure date objects to avoid TypeError
-    now_date = datetime.utcnow().date()
-    search_end_date = min(user_date_obj, now_date)
-    
-    # 3. Format upper bound for GEE query (+1 day to cover full day UTC)
-    end_str = (search_end_date + timedelta(days=1)).strftime("%Y-%m-%d")
-    
-    # 4. Query Sentinel-1 collection filtered by region geometry
+    # 2. Search GEE from Oct 2014 up to target_str
     col = (
         ee.ImageCollection("COPERNICUS/S1_GRD")
         .filterBounds(region)
-        .filterDate("2014-10-03", end_str)
+        .filterDate("2014-10-03", end_date)
         .filter(ee.Filter.eq("instrumentMode", "IW"))
         .filter(ee.Filter.listContains("transmitterReceiverPolarisation", "VV"))
-        .sort("system:time_start", False)  # Sort newest to oldest
+        .sort("system:time_start", False)  # Newest pass before target date
     )
 
     try:
@@ -289,11 +284,11 @@ def find_date(region, user_date):
         timestamp = latest_img.get("system:time_start").getInfo()
         
         if timestamp:
-            # Format millisecond UTC timestamp from GEE metadata to YYYY-MM-DD
+            # Convert GEE epoch millisecond timestamp to YYYY-MM-DD
             actual_date = datetime.utcfromtimestamp(timestamp / 1000.0).strftime("%Y-%m-%d")
             return actual_date
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"Date search error: {e}")
 
     return None
 # =========================================================
