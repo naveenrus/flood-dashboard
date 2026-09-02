@@ -1,4 +1,4 @@
-
+# =========================================================
 # modules/flood_module.py
 # =========================================================
 
@@ -710,6 +710,13 @@ def get_flood_map(name, date, mode):
 # GENERATE MAP PDF
 # =========================================================
 def generate_map_pdf(flood, water, region, name, date):
+    """
+    Generate a publication-style flood map PDF.
+
+    This version normalizes all downloaded GEE overlay images to the
+    exact same RGBA dimensions before compositing. This fixes:
+    'images do not match'
+    """
     simple_region = region.simplify(maxError=500)
     coords = simple_region.bounds().coordinates().getInfo()[0]
     width = abs(coords[1][0] - coords[0][0])
@@ -728,35 +735,101 @@ def generate_map_pdf(flood, water, region, name, date):
     flood_area = (raw_val / 10000) if raw_val else 0
 
     user_d = datetime.strptime(date, "%Y-%m-%d")
-    sar_img_obj, actual_date = find_latest_sar_image(simple_region, user_d)
-    
+    sar_img_obj, sar_metadata = find_latest_sar_image(simple_region, user_d)
+
     if sar_img_obj is None:
-        raise Exception("SAR image generation failed")
-        
-    sar = sar_img_obj.select('VV')
+        message = (
+            sar_metadata.get("message", "SAR image generation failed")
+            if isinstance(sar_metadata, dict)
+            else "SAR image generation failed"
+        )
+        raise Exception(message)
 
-    sar_img = safe_gee_image(sar.clip(simple_region), simple_region, None, dim, -25, 0)
-    water_img = safe_gee_image(water.selfMask(), simple_region, ["0000FF"], dim)
-    flood_img = safe_gee_image(flood.selfMask(), simple_region, ["FF0000"], dim)
+    actual_date = (
+        sar_metadata.get("actual_date", date)
+        if isinstance(sar_metadata, dict)
+        else date
+    )
 
-    boundary = ee.Image().byte().paint(featureCollection=ee.FeatureCollection(simple_region), color=1, width=3)
-    boundary_img = safe_gee_image(boundary.selfMask(), simple_region, ["000000"], dim)
+    sar = sar_img_obj.select("VV")
 
-    combined = sar_img
-    if water_img:
+    sar_img = safe_gee_image(
+        sar.clip(simple_region), simple_region, None, dim, -25, 0
+    )
+    water_img = safe_gee_image(
+        water.selfMask(), simple_region, ["0000FF"], dim
+    )
+    flood_img = safe_gee_image(
+        flood.selfMask(), simple_region, ["FF0000"], dim
+    )
+
+    boundary = (
+        ee.Image()
+        .byte()
+        .paint(
+            featureCollection=ee.FeatureCollection(simple_region),
+            color=1,
+            width=3
+        )
+    )
+    boundary_img = safe_gee_image(
+        boundary.selfMask(), simple_region, ["000000"], dim
+    )
+
+    if sar_img is None:
+        raise Exception("Could not create Sentinel-1 base image for PDF.")
+
+    # IMPORTANT FIX:
+    # Google Earth Engine thumbnails can return slightly different pixel
+    # dimensions for different layers. PIL alpha_composite requires exact
+    # width/height and RGBA mode.
+    base_size = sar_img.size
+
+    def normalize_image(img):
+        if img is None:
+            return None
+        img = img.convert("RGBA")
+        if img.size != base_size:
+            img = img.resize(base_size, Image.Resampling.LANCZOS)
+        return img
+
+    combined = normalize_image(sar_img)
+    water_img = normalize_image(water_img)
+    flood_img = normalize_image(flood_img)
+    boundary_img = normalize_image(boundary_img)
+
+    if water_img is not None:
         combined = Image.alpha_composite(combined, water_img)
-    if flood_img:
+    if flood_img is not None:
         combined = Image.alpha_composite(combined, flood_img)
-    if boundary_img:
+    if boundary_img is not None:
         combined = Image.alpha_composite(combined, boundary_img)
 
-    width_km = geodesic((coords[0][1], coords[0][0]), (coords[1][1], coords[1][0])).km
+    width_km = geodesic(
+        (coords[0][1], coords[0][0]),
+        (coords[1][1], coords[1][0])
+    ).km
+
     scale_km = 50 if width_km > 300 else 20 if width_km > 100 else 10
 
     fig = plt.figure(figsize=(12, 10))
 
-    fig.text(0.5, 0.965, f"Flood Inundation Map of {name.upper()}", ha='center', fontsize=22, fontweight='bold', color='#0B4FA2')
-    fig.text(0.5, 0.935, f"Derived from Sentinel-1 Dual-Pol SAR Imagery ({actual_date or date})", ha='center', fontsize=11, color='darkred')
+    fig.text(
+        0.5, 0.965,
+        f"Flood Inundation Map of {name.upper()}",
+        ha="center",
+        fontsize=22,
+        fontweight="bold",
+        color="#0B4FA2"
+    )
+
+    fig.text(
+        0.5, 0.935,
+        f"Derived from Sentinel-1 Dual-Pol SAR Imagery ({actual_date})",
+        ha="center",
+        fontsize=11,
+        color="darkred"
+    )
 
     ax = fig.add_axes([0.05, 0.12, 0.70, 0.78])
     ax.imshow(combined)
@@ -770,37 +843,100 @@ def generate_map_pdf(flood, water, region, name, date):
 
     legend_ax = fig.add_axes([0.77, 0.55, 0.20, 0.18])
     legend_ax.axis("off")
-    flood_patch = mpatches.Patch(color='red', label='Flood Inundation')
-    water_patch = mpatches.Patch(color='blue', label='Permanent Water')
-    boundary_patch = mpatches.Patch(color='black', label='Boundary')
 
-    legend_ax.legend(handles=[flood_patch, water_patch, boundary_patch], loc='center', fontsize=10, frameon=True)
+    flood_patch = mpatches.Patch(
+        color="red", label="Flood Inundation"
+    )
+    water_patch = mpatches.Patch(
+        color="blue", label="Permanent Water"
+    )
+    boundary_patch = mpatches.Patch(
+        color="black", label="Boundary"
+    )
+
+    legend_ax.legend(
+        handles=[flood_patch, water_patch, boundary_patch],
+        loc="center",
+        fontsize=10,
+        frameon=True
+    )
 
     north_ax = fig.add_axes([0.83, 0.80, 0.08, 0.10])
     north_ax.axis("off")
-    north_ax.annotate('N', xy=(0.5, 0.9), xytext=(0.5, 0.2), arrowprops=dict(facecolor='black', width=3, headwidth=10), ha='center', fontsize=14, fontweight='bold')
+    north_ax.annotate(
+        "N",
+        xy=(0.5, 0.9),
+        xytext=(0.5, 0.2),
+        arrowprops=dict(
+            facecolor="black",
+            width=3,
+            headwidth=10
+        ),
+        ha="center",
+        fontsize=14,
+        fontweight="bold"
+    )
 
-    info_text = f"Satellite Date: {actual_date or date}\n\nEstimated Flood:\n{round(flood_area,2):,} ha\n\nSensor:\nSentinel-1 (VV+VH)"
-    fig.text(0.78, 0.32, info_text, fontsize=9.5, bbox=dict(facecolor='#f8f9fa', edgecolor='black', boxstyle='round,pad=0.5'))
+    info_text = (
+        f"Requested Date: {date}\n\n"
+        f"Satellite Date: {actual_date}\n\n"
+        f"Estimated Flood:\n{round(flood_area, 2):,} ha\n\n"
+        f"Sensor:\nSentinel-1 (VV+VH)"
+    )
+
+    fig.text(
+        0.78, 0.32,
+        info_text,
+        fontsize=9.5,
+        bbox=dict(
+            facecolor="#f8f9fa",
+            edgecolor="black",
+            boxstyle="round,pad=0.5"
+        )
+    )
 
     scale_ax = fig.add_axes([0.78, 0.16, 0.18, 0.05])
     scale_ax.set_xlim(0, scale_km)
     scale_ax.set_ylim(0, 1)
 
-    scale_ax.plot([0, scale_km], [0.5, 0.5], color='black', linewidth=2.5)
-    for x in [0, scale_km/2, scale_km]:
-        scale_ax.plot([x, x], [0.3, 0.7], color='black', linewidth=1.5)
-        scale_ax.text(x, 0.8, f"{int(x)}", ha='center', fontsize=9)
+    scale_ax.plot(
+        [0, scale_km], [0.5, 0.5],
+        color="black",
+        linewidth=2.5
+    )
 
-    scale_ax.text(scale_km/2, -0.15, "Kilometers", ha='center', fontsize=9.5, fontweight='bold')
+    for x in [0, scale_km / 2, scale_km]:
+        scale_ax.plot(
+            [x, x], [0.3, 0.7],
+            color="black",
+            linewidth=1.5
+        )
+        scale_ax.text(x, 0.8, f"{int(x)}", ha="center", fontsize=9)
+
+    scale_ax.text(
+        scale_km / 2,
+        -0.15,
+        "Kilometers",
+        ha="center",
+        fontsize=9.5,
+        fontweight="bold"
+    )
     scale_ax.axis("off")
 
-    footer = "Source: Sentinel-1 Dual-Pol SAR | Analysis Engine: Google Earth Engine"
-    fig.text(0.05, 0.04, footer, fontsize=8, color='gray')
+    footer = (
+        "Source: Sentinel-1 Dual-Pol SAR | "
+        "Analysis Engine: Google Earth Engine"
+    )
+    fig.text(0.05, 0.04, footer, fontsize=8, color="gray")
 
     output_name = f"{name}_{date}_map.pdf"
-    plt.savefig(output_name, dpi=300, bbox_inches='tight', format='pdf')
-    plt.close()
+    plt.savefig(
+        output_name,
+        dpi=300,
+        bbox_inches="tight",
+        format="pdf"
+    )
+    plt.close(fig)
 
     return output_name
 
