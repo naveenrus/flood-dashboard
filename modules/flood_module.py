@@ -246,14 +246,7 @@ def get_region(name, mode):
 
     return geom
 
-# =========================================================
-# DIRECT SINGLE-PASS SAR FETCH (HISTORICAL SEARCH)
-# =========================================================
 def find_latest_sar_image(region, user_date):
-    """
-    Returns (ee_image, actual_date_str) for the single latest 
-    Sentinel-1 pass on or before user_date over the specified region.
-    """
     if isinstance(user_date, (datetime, datetime.date)):
         target_str = user_date.strftime("%Y-%m-%d")
     else:
@@ -261,19 +254,18 @@ def find_latest_sar_image(region, user_date):
 
     end_date = (datetime.strptime(target_str, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
 
+    # Relax polarization filter to ensure any available VV pass over the bounding box is caught
     col = (
         ee.ImageCollection("COPERNICUS/S1_GRD")
-        .filterBounds(region)
+        .filterBounds(region.bounds())  # Use bounding box to capture partial overlaps
         .filterDate("2014-10-03", end_date)
         .filter(ee.Filter.eq("instrumentMode", "IW"))
         .filter(ee.Filter.listContains("transmitterReceiverPolarisation", "VV"))
-        .filter(ee.Filter.listContains("transmitterReceiverPolarisation", "VH"))
         .sort("system:time_start", False)
     )
 
     try:
-        count = col.size().getInfo()
-        if count == 0:
+        if col.size().getInfo() == 0:
             return None, "No Data"
 
         img = col.first()
@@ -282,7 +274,6 @@ def find_latest_sar_image(region, user_date):
         
         return img, actual_date
     except Exception as e:
-        print(f"GEE Search Error: {e}")
         return None, "No Data"
 
 # =========================================================
