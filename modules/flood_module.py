@@ -50,17 +50,10 @@ except ImportError:
     HAS_DRIVE_API = False
 
 # =========================================================
-# INIT EARTH ENGINE (NO UNHEALTHY CACHING + DIRECT DICT PARSE)
-# =========================================================
-# =========================================================
-# INIT EARTH ENGINE (SAFE INTERNAL STATE CHECK)
-# =========================================================
-# =========================================================
 # INIT EARTH ENGINE
 # =========================================================
 def init_ee():
     """Initializes Earth Engine safely without accessing private internals."""
-    # Check if GEE is already initialized in this runtime
     try:
         ee.Number(1).getInfo()
         return
@@ -92,7 +85,7 @@ def init_ee():
             ee.Initialize(project='rare-host-474609-d8')
     except Exception as e:
         st.error(f"Earth Engine Initialization Failed: {e}")
-        st.stop()  # Stop Streamlit execution immediately so it doesn't crash downstream with _NOT_INITIALIZED_MESSAGE
+        st.stop()
 
 # =========================================================
 # FETCH ADMIN DISTRICT & STATE LISTS FOR DROPDOWN
@@ -254,56 +247,43 @@ def get_region(name, mode):
     return geom
 
 # =========================================================
-# FIND AVAILABLE SAR DATE (STRICTLY HISTORICAL SEARCH)
+# DIRECT SINGLE-PASS SAR FETCH (HISTORICAL SEARCH)
 # =========================================================
-def find_date(region, user_date):
+def find_latest_sar_image(region, user_date):
     """
-    Searches for the latest Sentinel-1 pass ON OR BEFORE the selected user_date.
+    Returns (ee_image, actual_date_str) for the single latest 
+    Sentinel-1 pass on or before user_date over the specified region.
     """
-    # 1. Format target date string
     if isinstance(user_date, (datetime, datetime.date)):
         target_str = user_date.strftime("%Y-%m-%d")
     else:
         target_str = str(user_date)
-    
-    # Add 1 day to include acquisitions on the target date itself
+
     end_date = (datetime.strptime(target_str, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
 
-    # 2. Search GEE from Oct 2014 up to target_str
     col = (
         ee.ImageCollection("COPERNICUS/S1_GRD")
         .filterBounds(region)
         .filterDate("2014-10-03", end_date)
         .filter(ee.Filter.eq("instrumentMode", "IW"))
         .filter(ee.Filter.listContains("transmitterReceiverPolarisation", "VV"))
-        .sort("system:time_start", False)  # Newest pass before target date
+        .filter(ee.Filter.listContains("transmitterReceiverPolarisation", "VH"))
+        .sort("system:time_start", False)
     )
 
     try:
-        latest_img = col.first()
-        timestamp = latest_img.get("system:time_start").getInfo()
+        count = col.size().getInfo()
+        if count == 0:
+            return None, "No Data"
+
+        img = col.first()
+        timestamp = img.get("system:time_start").getInfo()
+        actual_date = datetime.utcfromtimestamp(timestamp / 1000.0).strftime("%Y-%m-%d")
         
-        if timestamp:
-            # Convert GEE epoch millisecond timestamp to YYYY-MM-DD
-            actual_date = datetime.utcfromtimestamp(timestamp / 1000.0).strftime("%Y-%m-%d")
-            return actual_date
+        return img, actual_date
     except Exception as e:
-        print(f"Date search error: {e}")
-
-    return None
-# =========================================================
-# DUAL-POLARIZATION SAR PROCESSING
-# =========================================================
-def get_sar(region, start, end):
-    col = ee.ImageCollection("COPERNICUS/S1_GRD") \
-        .filterBounds(region) \
-        .filterDate(start, end) \
-        .filter(ee.Filter.eq('instrumentMode', 'IW')) \
-        .select(['VV', 'VH']) \
-        .median()
-
-    vv_vh_ratio = col.select('VV').subtract(col.select('VH')).rename('VV_VH_ratio')
-    return col.addBands(vv_vh_ratio)
+        print(f"GEE Search Error: {e}")
+        return None, "No Data"
 
 # =========================================================
 # PERMANENT WATER
@@ -485,18 +465,17 @@ def get_flood_map(name, date, mode):
 
     region = get_region(name, mode)
     user_date = datetime.strptime(date, "%Y-%m-%d")
-    actual = find_date(region, user_date)
+    
+    # Direct fetch of exact Sentinel-1 pass image & date
+    after_img, actual = find_latest_sar_image(region, user_date)
 
-    if actual is None:
+    if actual == "No Data" or after_img is None:
         return (None, 0, None, None, region, "No Data")
 
-    d = datetime.strptime(actual, "%Y-%m-%d")
-
-    after = get_sar(
-        region,
-        actual,
-        (d + timedelta(days=3)).strftime("%Y-%m-%d")
-    )
+    vv = after_img.select('VV')
+    vh = after_img.select('VH')
+    vv_vh_ratio = vv.subtract(vh).rename('VV_VH_ratio')
+    after = after_img.addBands(vv_vh_ratio)
 
     permanent_water = get_permanent_water(region)
     current_water = get_water(after)
@@ -654,11 +633,13 @@ def generate_map_pdf(flood, water, region, name, date):
     raw_val = list(area_dict.values())[0] if area_dict else 0
     flood_area = (raw_val / 10000) if raw_val else 0
 
-    sar = get_sar(
-        simple_region,
-        date,
-        (datetime.strptime(date, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
-    ).select('VV')
+    user_d = datetime.strptime(date, "%Y-%m-%d")
+    sar_img_obj, actual_date = find_latest_sar_image(simple_region, user_d)
+    
+    if sar_img_obj is None:
+        raise Exception("SAR image generation failed")
+        
+    sar = sar_img_obj.select('VV')
 
     sar_img = safe_gee_image(sar.clip(simple_region), simple_region, None, dim, -25, 0)
     water_img = safe_gee_image(water.selfMask(), simple_region, ["0000FF"], dim)
@@ -666,9 +647,6 @@ def generate_map_pdf(flood, water, region, name, date):
 
     boundary = ee.Image().byte().paint(featureCollection=ee.FeatureCollection(simple_region), color=1, width=3)
     boundary_img = safe_gee_image(boundary.selfMask(), simple_region, ["000000"], dim)
-
-    if sar_img is None:
-        raise Exception("SAR image generation failed")
 
     combined = sar_img
     if water_img:
