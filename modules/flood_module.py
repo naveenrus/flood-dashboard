@@ -296,7 +296,6 @@ def find_date(region, user_date):
         pass
 
     return None
-
 # =========================================================
 # DUAL-POLARIZATION SAR PROCESSING
 # =========================================================
