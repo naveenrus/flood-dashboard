@@ -254,28 +254,27 @@ def get_region(name, mode):
     return geom
 
 # =========================================================
-# FIND AVAILABLE SAR DATE (SEARCHES ENTIRE ARCHIVE UP TO TARGET DATE)
+# FIND AVAILABLE SAR DATE (PREVENT SAME-DAY BOUNDARY OVERLAP)
 # =========================================================
 def find_date(region, user_date):
-    target_str = user_date.strftime("%Y-%m-%d")
+    # Set upper bound to midnight of the NEXT day so same-day passes are included accurately
+    target_end = user_date + timedelta(days=1)
     
-    # Query Sentinel-1 GRD archive from start of mission (Oct 2014) up to user_date
     col = (
         ee.ImageCollection("COPERNICUS/S1_GRD")
         .filterBounds(region)
-        .filterDate("2014-10-03", target_str)
+        .filterDate("2014-10-03", target_end.strftime("%Y-%m-%d"))
         .filter(ee.Filter.eq("instrumentMode", "IW"))
         .filter(ee.Filter.listContains("transmitterReceiverPolarisation", "VV"))
         .sort("system:time_start", False)  # Sort newest to oldest
     )
 
     try:
-        # Get the latest image taken on or before user_date
         latest_img = col.first()
         timestamp = latest_img.get("system:time_start").getInfo()
         
         if timestamp:
-            # Convert millisecond UTC timestamp from GEE to YYYY-MM-DD
+            # Extract date in UTC
             actual_date = datetime.utcfromtimestamp(timestamp / 1000.0).strftime("%Y-%m-%d")
             return actual_date
     except Exception:
