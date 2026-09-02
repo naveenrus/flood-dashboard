@@ -254,16 +254,25 @@ def get_region(name, mode):
     return geom
 
 # =========================================================
-# FIND AVAILABLE SAR DATE (PREVENT SAME-DAY BOUNDARY OVERLAP)
+# FIND AVAILABLE SAR DATE (REAL ACQUISITION TIMESTAMP MATCHING)
 # =========================================================
 def find_date(region, user_date):
-    # Set upper bound to midnight of the NEXT day so same-day passes are included accurately
-    target_end = user_date + timedelta(days=1)
+    """
+    Finds the exact or most recent Sentinel-1 SAR acquisition date 
+    on or before user_date over the target region.
+    """
+    # 1. Cap target end date to prevent future-date queries
+    now_utc = datetime.utcnow().date()
+    search_end_date = min(user_date, now_utc)
     
+    # 2. Add 1 day to upper bound to include acquisitions on search_end_date
+    end_str = (search_end_date + timedelta(days=1)).strftime("%Y-%m-%d")
+    
+    # 3. Query Sentinel-1 collection filtered by region geometry
     col = (
         ee.ImageCollection("COPERNICUS/S1_GRD")
         .filterBounds(region)
-        .filterDate("2014-10-03", target_end.strftime("%Y-%m-%d"))
+        .filterDate("2014-10-03", end_str)
         .filter(ee.Filter.eq("instrumentMode", "IW"))
         .filter(ee.Filter.listContains("transmitterReceiverPolarisation", "VV"))
         .sort("system:time_start", False)  # Sort newest to oldest
@@ -274,7 +283,7 @@ def find_date(region, user_date):
         timestamp = latest_img.get("system:time_start").getInfo()
         
         if timestamp:
-            # Extract date in UTC
+            # Format millisecond UTC timestamp from GEE metadata to YYYY-MM-DD
             actual_date = datetime.utcfromtimestamp(timestamp / 1000.0).strftime("%Y-%m-%d")
             return actual_date
     except Exception:
