@@ -1,4 +1,4 @@
-# =========================================================
+
 # modules/flood_module.py
 # =========================================================
 
@@ -246,35 +246,136 @@ def get_region(name, mode):
 
     return geom
 
-def find_latest_sar_image(region, user_date):
-    if isinstance(user_date, (datetime, datetime.date)):
-        target_str = user_date.strftime("%Y-%m-%d")
-    else:
-        target_str = str(user_date)
+def _date_to_string(user_date):
+    """Normalize Streamlit/date/datetime input to YYYY-MM-DD."""
+    if isinstance(user_date, datetime):
+        return user_date.strftime("%Y-%m-%d")
+    try:
+        return user_date.strftime("%Y-%m-%d")
+    except Exception:
+        return str(user_date)
 
-    end_date = (datetime.strptime(target_str, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
 
-    # Relax polarization filter to ensure any available VV pass over the bounding box is caught
-    col = (
+def _image_metadata(img, requested_date):
+    """Return a client-side metadata dictionary for a Sentinel-1 image."""
+    props = img.toDictionary([
+        "system:index",
+        "system:time_start",
+        "platform_number",
+        "orbitProperties_pass",
+        "orbitNumber_start",
+        "relativeOrbitNumber_start",
+        "instrumentMode",
+        "resolution_meters",
+        "transmitterReceiverPolarisation"
+    ]).getInfo()
+
+    ts = props.get("system:time_start")
+    acquired = datetime.utcfromtimestamp(ts / 1000.0) if ts else None
+    acquired_date = acquired.strftime("%Y-%m-%d") if acquired else "Unknown"
+    acquired_time = acquired.strftime("%H:%M:%S UTC") if acquired else "Unknown"
+
+    req = datetime.strptime(requested_date, "%Y-%m-%d").date()
+    act = datetime.strptime(acquired_date, "%Y-%m-%d").date() if acquired else req
+    gap_days = (req - act).days
+
+    return {
+        "requested_date": requested_date,
+        "actual_date": acquired_date,
+        "acquisition_time": acquired_time,
+        "satellite": f"Sentinel-1{props.get('platform_number', 'Unknown')}",
+        "platform": props.get("platform_number", "Unknown"),
+        "orbit_direction": props.get("orbitProperties_pass", "Unknown"),
+        "absolute_orbit": props.get("orbitNumber_start", "Unknown"),
+        "relative_orbit": props.get("relativeOrbitNumber_start", "Unknown"),
+        "instrument_mode": props.get("instrumentMode", "Unknown"),
+        "polarization": props.get("transmitterReceiverPolarisation", []),
+        "product_id": props.get("system:index", "Unknown"),
+        "gap_days": gap_days
+    }
+
+
+def find_latest_sar_image(region, user_date, fallback_days=30):
+    """
+    Priority:
+    1. Find an image acquired on the exact requested date.
+    2. If unavailable, find the latest earlier image within fallback_days.
+    3. Never silently label an older image as the requested date.
+    """
+    target_str = _date_to_string(user_date)
+    target_dt = datetime.strptime(target_str, "%Y-%m-%d")
+    next_dt = target_dt + timedelta(days=1)
+    fallback_start = target_dt - timedelta(days=fallback_days)
+
+    base = (
         ee.ImageCollection("COPERNICUS/S1_GRD")
-        .filterBounds(region.bounds())  # Use bounding box to capture partial overlaps
-        .filterDate("2014-10-03", end_date)
+        .filterBounds(region)
         .filter(ee.Filter.eq("instrumentMode", "IW"))
-        .filter(ee.Filter.listContains("transmitterReceiverPolarisation", "VV"))
-        .sort("system:time_start", False)
+        .filter(ee.Filter.listContains(
+            "transmitterReceiverPolarisation", "VV"
+        ))
+        .filter(ee.Filter.listContains(
+            "transmitterReceiverPolarisation", "VH"
+        ))
     )
 
     try:
-        if col.size().getInfo() == 0:
-            return None, "No Data"
+        # Exact requested calendar day.
+        exact = (
+            base.filterDate(
+                target_dt.strftime("%Y-%m-%d"),
+                next_dt.strftime("%Y-%m-%d")
+            )
+            .sort("system:time_start", False)
+        )
 
-        img = col.first()
-        timestamp = img.get("system:time_start").getInfo()
-        actual_date = datetime.utcfromtimestamp(timestamp / 1000.0).strftime("%Y-%m-%d")
-        
-        return img, actual_date
+        exact_count = exact.size().getInfo()
+        if exact_count > 0:
+            img = ee.Image(exact.first())
+            meta = _image_metadata(img, target_str)
+            meta["status"] = "EXACT_DATE_AVAILABLE"
+            meta["message"] = "Exact requested-date Sentinel-1 image is available in Google Earth Engine."
+            return img, meta
+
+        # Fallback only to an earlier image, never a future one.
+        fallback = (
+            base.filterDate(
+                fallback_start.strftime("%Y-%m-%d"),
+                target_dt.strftime("%Y-%m-%d")
+            )
+            .sort("system:time_start", False)
+        )
+
+        fallback_count = fallback.size().getInfo()
+        if fallback_count == 0:
+            return None, {
+                "status": "NO_GEE_DATA",
+                "requested_date": target_str,
+                "actual_date": None,
+                "gap_days": None,
+                "message": (
+                    "No Sentinel-1 VV+VH IW image was found in Google Earth Engine "
+                    f"for the requested date or previous {fallback_days} days."
+                )
+            }
+
+        img = ee.Image(fallback.first())
+        meta = _image_metadata(img, target_str)
+        meta["status"] = "OLDER_IMAGE_ONLY"
+        meta["message"] = (
+            "The requested-date image is not available in Google Earth Engine. "
+            "An earlier image is being reported explicitly as a fallback."
+        )
+        return img, meta
+
     except Exception as e:
-        return None, "No Data"
+        return None, {
+            "status": "ERROR",
+            "requested_date": target_str,
+            "actual_date": None,
+            "gap_days": None,
+            "message": f"Sentinel-1 query failed: {e}"
+        }
 
 # =========================================================
 # PERMANENT WATER
@@ -457,11 +558,13 @@ def get_flood_map(name, date, mode):
     region = get_region(name, mode)
     user_date = datetime.strptime(date, "%Y-%m-%d")
     
-    # Direct fetch of exact Sentinel-1 pass image & date
-    after_img, actual = find_latest_sar_image(region, user_date)
+    # Exact-date query first; older fallback is clearly identified.
+    after_img, metadata = find_latest_sar_image(region, user_date)
 
-    if actual == "No Data" or after_img is None:
-        return (None, 0, None, None, region, "No Data")
+    if after_img is None:
+        return (None, 0, None, None, region, metadata)
+
+    actual = metadata["actual_date"]
 
     vv = after_img.select('VV')
     vh = after_img.select('VH')
@@ -601,7 +704,7 @@ def get_flood_map(name, date, mode):
     """
     m.get_root().html.add_child(folium.Element(css))
 
-    return (m, flood_area, flood, permanent_water, region, actual)
+    return (m, flood_area, flood, permanent_water, region, metadata)
 
 # =========================================================
 # GENERATE MAP PDF
@@ -653,7 +756,7 @@ def generate_map_pdf(flood, water, region, name, date):
     fig = plt.figure(figsize=(12, 10))
 
     fig.text(0.5, 0.965, f"Flood Inundation Map of {name.upper()}", ha='center', fontsize=22, fontweight='bold', color='#0B4FA2')
-    fig.text(0.5, 0.935, f"Derived from Sentinel-1 Dual-Pol SAR Imagery ({date})", ha='center', fontsize=11, color='darkred')
+    fig.text(0.5, 0.935, f"Derived from Sentinel-1 Dual-Pol SAR Imagery ({actual_date or date})", ha='center', fontsize=11, color='darkred')
 
     ax = fig.add_axes([0.05, 0.12, 0.70, 0.78])
     ax.imshow(combined)
@@ -677,7 +780,7 @@ def generate_map_pdf(flood, water, region, name, date):
     north_ax.axis("off")
     north_ax.annotate('N', xy=(0.5, 0.9), xytext=(0.5, 0.2), arrowprops=dict(facecolor='black', width=3, headwidth=10), ha='center', fontsize=14, fontweight='bold')
 
-    info_text = f"Satellite Date: {date}\n\nEstimated Flood:\n{round(flood_area,2):,} ha\n\nSensor:\nSentinel-1 (VV+VH)"
+    info_text = f"Satellite Date: {actual_date or date}\n\nEstimated Flood:\n{round(flood_area,2):,} ha\n\nSensor:\nSentinel-1 (VV+VH)"
     fig.text(0.78, 0.32, info_text, fontsize=9.5, bbox=dict(facecolor='#f8f9fa', edgecolor='black', boxstyle='round,pad=0.5'))
 
     scale_ax = fig.add_axes([0.78, 0.16, 0.18, 0.05])
