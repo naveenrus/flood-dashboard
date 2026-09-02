@@ -254,22 +254,32 @@ def get_region(name, mode):
     return geom
 
 # =========================================================
-# FIND AVAILABLE SAR DATE
+# FIND AVAILABLE SAR DATE (SEARCHES ENTIRE ARCHIVE UP TO TARGET DATE)
 # =========================================================
 def find_date(region, user_date):
-    for i in range(15):
-        d = user_date - timedelta(days=i)
+    target_str = user_date.strftime("%Y-%m-%d")
+    
+    # Query Sentinel-1 GRD archive from start of mission (Oct 2014) up to user_date
+    col = (
+        ee.ImageCollection("COPERNICUS/S1_GRD")
+        .filterBounds(region)
+        .filterDate("2014-10-03", target_str)
+        .filter(ee.Filter.eq("instrumentMode", "IW"))
+        .filter(ee.Filter.listContains("transmitterReceiverPolarisation", "VV"))
+        .sort("system:time_start", False)  # Sort newest to oldest
+    )
 
-        col = ee.ImageCollection(
-            "COPERNICUS/S1_GRD"
-        ).filterBounds(region) \
-         .filterDate(
-            d.strftime("%Y-%m-%d"),
-            (d + timedelta(days=1)).strftime("%Y-%m-%d")
-         )
-
-        if col.size().getInfo() > 0:
-            return d.strftime("%Y-%m-%d")
+    try:
+        # Get the latest image taken on or before user_date
+        latest_img = col.first()
+        timestamp = latest_img.get("system:time_start").getInfo()
+        
+        if timestamp:
+            # Convert millisecond UTC timestamp from GEE to YYYY-MM-DD
+            actual_date = datetime.utcfromtimestamp(timestamp / 1000.0).strftime("%Y-%m-%d")
+            return actual_date
+    except Exception:
+        pass
 
     return None
 
