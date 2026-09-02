@@ -149,6 +149,11 @@ with st.sidebar:
         name = st.selectbox("Select State Name", states, index=default_idx)
 
     date = st.date_input("Select Observation Date")
+    max_gap_days = st.slider(
+        "Maximum acceptable fallback gap (days)",
+        min_value=0, max_value=30, value=3,
+        help="Older fallback images beyond this gap are flagged as unsuitable for current flood interpretation."
+    )
 
     run_btn = st.button("🚀 Run Analysis", type="primary", use_container_width=True)
 
@@ -163,16 +168,18 @@ with st.sidebar:
         **Data Processing Pipeline:**
         * **Sensor:** Sentinel-1 Synthetic Aperture Radar (SAR) Ground Range Detected (GRD).
         * **Polarization:** Dual-Pol VV & VH mode for water surface contrast.
-        * **Speckle Filter:** Refined Lee Speckle Filter to remove granular radar noise.
-        * **DEM Masking:** HydroSHEDS DEM slope masking (>5%) applied to eliminate terrain shadows.
-        * **Thresholding:** OTSU Automated Thresholding on backscatter coefficients.
+        * **Speckle Filter:** Focal median filtering to reduce SAR speckle noise.
+        * **DEM Masking:** SRTM slope mask (<3°) to reduce terrain-related false water.
+        * **Thresholding:** Dual-polarization VV and VH backscatter thresholds for open-water extraction.
+        * **Availability Check:** Exact requested date is checked first; any older GEE fallback is explicitly reported.
         """)
 
 # =========================================================
 # RUN ANALYSIS (FORCE FRESH GEE QUERY)
 # =========================================================
 if run_btn:
-    st.session_state.result = None  # Clear previous execution state to force fresh GEE fetching
+    st.session_state.result = None
+    st.session_state.max_gap_days = max_gap_days
     with st.spinner("Processing Dual-Pol (VV+VH) SAR Imagery & Filtering Noise..."):
         try:
             st.session_state.result = fm.get_flood_map(name, str(date), mode)
@@ -191,11 +198,56 @@ if st.session_state.result is None:
 
 # VIEW AFTER ANALYSIS EXECUTION
 else:
-    (m, area, flood, water, region, actual) = st.session_state.result
+    (m, area, flood, water, region, metadata) = st.session_state.result
 
-    if actual == "No Data":
-        st.error("⚠️ No Sentinel-1 SAR acquisition available for this selection.")
+    status = metadata.get("status") if isinstance(metadata, dict) else "ERROR"
+
+    if status in ["NO_GEE_DATA", "ERROR"]:
+        st.error(metadata.get("message", "⚠️ No Sentinel-1 SAR acquisition available for this selection."))
+        st.info(f"Requested date: {metadata.get('requested_date', str(date))}")
     else:
+        actual = metadata.get("actual_date", "Unknown")
+
+        if status == "OLDER_IMAGE_ONLY":
+            gap = metadata.get("gap_days")
+            st.warning(
+                f"⚠️ Requested date: {metadata.get('requested_date')} | "
+                f"Latest earlier GEE image: {actual} | Gap: {gap} day(s). "
+                "The flood result is based on the older image and is not labelled as the requested date."
+            )
+        else:
+            st.success("✅ Exact requested-date Sentinel-1 image is available in Google Earth Engine.")
+        # Sentinel-1 Data Availability & Metadata
+        st.markdown("### 🛰️ Sentinel-1 Data Availability")
+        d1, d2, d3, d4 = st.columns(4)
+        with d1:
+            st.metric("Requested Date", metadata.get("requested_date", str(date)))
+        with d2:
+            st.metric("Actual GEE Acquisition", actual)
+        with d3:
+            st.metric("GEE Status", "Exact" if status == "EXACT_DATE_AVAILABLE" else "Fallback")
+        with d4:
+            st.metric("Date Gap", f"{metadata.get('gap_days', 0)} day(s)")
+
+        with st.expander("🔍 Full Sentinel-1 Scene Metadata", expanded=False):
+            st.write({
+                "Satellite": metadata.get("satellite"),
+                "Acquisition Time": metadata.get("acquisition_time"),
+                "Orbit Direction": metadata.get("orbit_direction"),
+                "Absolute Orbit": metadata.get("absolute_orbit"),
+                "Relative Orbit": metadata.get("relative_orbit"),
+                "Instrument Mode": metadata.get("instrument_mode"),
+                "Polarization": metadata.get("polarization"),
+                "Product ID": metadata.get("product_id")
+            })
+
+        gap_limit = st.session_state.get("max_gap_days", 3)
+        if status == "OLDER_IMAGE_ONLY" and metadata.get("gap_days", 999) > gap_limit:
+            st.error(
+                f"🚫 The fallback image is {metadata.get('gap_days')} days older than the requested date. "
+                f"Your allowed limit is {gap_limit} days, so this result should not be treated as current flood information."
+            )
+
         # Severity Categorization
         if area < 1000:
             severity_label = "🟢 Low Inundation"
