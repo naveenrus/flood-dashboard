@@ -254,21 +254,27 @@ def get_region(name, mode):
     return geom
 
 # =========================================================
-# FIND AVAILABLE SAR DATE (REAL ACQUISITION TIMESTAMP MATCHING)
+# FIND AVAILABLE SAR DATE (TYPE-SAFE DATE COMPARISON)
 # =========================================================
 def find_date(region, user_date):
     """
     Finds the exact or most recent Sentinel-1 SAR acquisition date 
     on or before user_date over the target region.
     """
-    # 1. Cap target end date to prevent future-date queries
-    now_utc = datetime.utcnow().date()
-    search_end_date = min(user_date, now_utc)
+    # 1. Convert user_date to datetime.date if passed as datetime
+    if isinstance(user_date, datetime):
+        user_date_obj = user_date.date()
+    else:
+        user_date_obj = user_date
+
+    # 2. Compare using pure date objects to avoid TypeError
+    now_date = datetime.utcnow().date()
+    search_end_date = min(user_date_obj, now_date)
     
-    # 2. Add 1 day to upper bound to include acquisitions on search_end_date
+    # 3. Format upper bound for GEE query (+1 day to cover full day UTC)
     end_str = (search_end_date + timedelta(days=1)).strftime("%Y-%m-%d")
     
-    # 3. Query Sentinel-1 collection filtered by region geometry
+    # 4. Query Sentinel-1 collection filtered by region geometry
     col = (
         ee.ImageCollection("COPERNICUS/S1_GRD")
         .filterBounds(region)
