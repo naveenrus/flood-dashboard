@@ -169,9 +169,10 @@ with st.sidebar:
         """)
 
 # =========================================================
-# RUN ANALYSIS
+# RUN ANALYSIS (FORCE FRESH GEE QUERY)
 # =========================================================
 if run_btn:
+    st.session_state.result = None  # Clear previous execution state to force fresh GEE fetching
     with st.spinner("Processing Dual-Pol (VV+VH) SAR Imagery & Filtering Noise..."):
         try:
             st.session_state.result = fm.get_flood_map(name, str(date), mode)
@@ -193,7 +194,7 @@ else:
     (m, area, flood, water, region, actual) = st.session_state.result
 
     if actual == "No Data":
-        st.error("⚠️ No Sentinel-1 SAR acquisition available within 15 days of target date.")
+        st.error("⚠️ No Sentinel-1 SAR acquisition available for this selection.")
     else:
         # Severity Categorization
         if area < 1000:
