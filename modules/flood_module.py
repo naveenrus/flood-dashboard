@@ -562,7 +562,7 @@ def get_ai_flood_summary(name, date, area_ha, mode):
         client = genai.Client(api_key=api_key)
         
         prompt = f"""
-        Act as a senior hydrologist at  India. Provide a concise 2-paragraph situation assessment for:
+        Act as a senior hydrologist at NRSC India. Provide a concise 2-paragraph situation assessment for:
         - Study Area: {name} ({mode.capitalize()})
         - Satellite Observation Date: {date}
         - Estimated Inundated Area: {area_ha:,.2f} hectares
@@ -572,8 +572,9 @@ def get_ai_flood_summary(name, date, area_ha, mode):
         Keep the tone professional, cartographic, and technical. Do not use Markdown formatting or bullet points.
         """
         
+        # Use 'gemini-2.5-flash' for the new google-genai SDK
         response = client.models.generate_content(
-            model='gemini-1.5-flash',
+            model='gemini-2.5-flash',
             contents=prompt
         )
         
