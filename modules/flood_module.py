@@ -40,6 +40,13 @@ from reportlab.lib.enums import (
     TA_JUSTIFY
 )
 
+# Optional Gemini AI SDK integration
+try:
+    from google import genai
+    HAS_GENAI = True
+except ImportError:
+    HAS_GENAI = False
+
 # Optional dependencies for Drive API Local Sync
 try:
     from googleapiclient.discovery import build
@@ -255,7 +262,6 @@ def _date_to_string(user_date):
     except Exception:
         return str(user_date)
 
-
 def _image_metadata(img, requested_date):
     """Return a client-side metadata dictionary for a Sentinel-1 image."""
     props = img.toDictionary([
@@ -294,7 +300,6 @@ def _image_metadata(img, requested_date):
         "gap_days": gap_days
     }
 
-
 def find_latest_sar_image(region, user_date, fallback_days=30):
     """
     Priority:
@@ -311,16 +316,11 @@ def find_latest_sar_image(region, user_date, fallback_days=30):
         ee.ImageCollection("COPERNICUS/S1_GRD")
         .filterBounds(region)
         .filter(ee.Filter.eq("instrumentMode", "IW"))
-        .filter(ee.Filter.listContains(
-            "transmitterReceiverPolarisation", "VV"
-        ))
-        .filter(ee.Filter.listContains(
-            "transmitterReceiverPolarisation", "VH"
-        ))
+        .filter(ee.Filter.listContains("transmitterReceiverPolarisation", "VV"))
+        .filter(ee.Filter.listContains("transmitterReceiverPolarisation", "VH"))
     )
 
     try:
-        # Exact requested calendar day.
         exact = (
             base.filterDate(
                 target_dt.strftime("%Y-%m-%d"),
@@ -337,7 +337,6 @@ def find_latest_sar_image(region, user_date, fallback_days=30):
             meta["message"] = "Exact requested-date Sentinel-1 image is available in Google Earth Engine."
             return img, meta
 
-        # Fallback only to an earlier image, never a future one.
         fallback = (
             base.filterDate(
                 fallback_start.strftime("%Y-%m-%d"),
@@ -550,6 +549,35 @@ def safe_gee_image(image, region, palette, dim, min_value=None, max_value=None):
         return None
 
 # =========================================================
+# AI FLOOD SITUATION BRIEF GENERATOR
+# =========================================================
+def get_ai_flood_summary(name, date, area_ha, mode):
+    """Generates an executive hydrological summary using Google Gemini AI."""
+    try:
+        api_key = st.secrets.get("GEMINI_API_KEY")
+        if not api_key or not HAS_GENAI:
+            return None
+
+        client = genai.Client(api_key=api_key)
+        prompt = f"""
+        Act as a senior hydrologist at NRSC India. Provide a concise 2-paragraph situation assessment for:
+        - Study Area: {name} ({mode.capitalize()})
+        - Satellite Observation Date: {date}
+        - Estimated Inundated Area: {area_ha:,.2f} hectares
+
+        Paragraph 1: Executive situation overview mentioning monsoon patterns, regional river network dynamics, and inundation extent.
+        Paragraph 2: Strategic guidance for State Disaster Management Authorities (SDMA) regarding emergency relief deployment and multi-temporal monitoring.
+        Keep the tone professional, cartographic, and technical. Do not use Markdown formatting or bullet points.
+        """
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt
+        )
+        return response.text.strip()
+    except Exception:
+        return None
+
+# =========================================================
 # GET FLOOD MAP
 # =========================================================
 def get_flood_map(name, date, mode):
@@ -558,7 +586,6 @@ def get_flood_map(name, date, mode):
     region = get_region(name, mode)
     user_date = datetime.strptime(date, "%Y-%m-%d")
     
-    # Exact-date query first; older fallback is clearly identified.
     after_img, metadata = find_latest_sar_image(region, user_date)
 
     if after_img is None:
@@ -707,32 +734,28 @@ def get_flood_map(name, date, mode):
     return (m, flood_area, flood, permanent_water, region, metadata)
 
 # =========================================================
-# GENERATE MAP PDF
+# GENERATE MAP PDF (SYNCHRONIZED AREA & PIL RESIZING)
 # =========================================================
-def generate_map_pdf(flood, water, region, name, date):
-    """
-    Generate a publication-style flood map PDF.
-
-    This version normalizes all downloaded GEE overlay images to the
-    exact same RGBA dimensions before compositing. This fixes:
-    'images do not match'
-    """
+def generate_map_pdf(flood, water, region, name, date, area_ha=None):
     simple_region = region.simplify(maxError=500)
     coords = simple_region.bounds().coordinates().getInfo()[0]
     width = abs(coords[1][0] - coords[0][0])
     dim = 1024 if width < 5 else 512
 
-    area_calc = flood.multiply(ee.Image.pixelArea()).reduceRegion(
-        reducer=ee.Reducer.sum(),
-        geometry=region,
-        scale=30,
-        maxPixels=1e13,
-        bestEffort=True
-    )
-
-    area_dict = area_calc.getInfo()
-    raw_val = list(area_dict.values())[0] if area_dict else 0
-    flood_area = (raw_val / 10000) if raw_val else 0
+    # Use precalculated area if passed to avoid numerical mismatch between map and report
+    if area_ha is None:
+        area_calc = flood.multiply(ee.Image.pixelArea()).reduceRegion(
+            reducer=ee.Reducer.sum(),
+            geometry=region,
+            scale=30,
+            maxPixels=1e13,
+            bestEffort=True
+        )
+        area_dict = area_calc.getInfo()
+        raw_val = list(area_dict.values())[0] if area_dict else 0
+        flood_area = (raw_val / 10000) if raw_val else 0
+    else:
+        flood_area = area_ha
 
     user_d = datetime.strptime(date, "%Y-%m-%d")
     sar_img_obj, sar_metadata = find_latest_sar_image(simple_region, user_d)
@@ -779,10 +802,6 @@ def generate_map_pdf(flood, water, region, name, date):
     if sar_img is None:
         raise Exception("Could not create Sentinel-1 base image for PDF.")
 
-    # IMPORTANT FIX:
-    # Google Earth Engine thumbnails can return slightly different pixel
-    # dimensions for different layers. PIL alpha_composite requires exact
-    # width/height and RGBA mode.
     base_size = sar_img.size
 
     def normalize_image(img):
@@ -941,7 +960,7 @@ def generate_map_pdf(flood, water, region, name, date):
     return output_name
 
 # =========================================================
-# GENERATE REPORT PDF
+# GENERATE REPORT PDF (DYNAMIC AI EXECUTIVE BRIEF)
 # =========================================================
 def generate_report_pdf(flood, water, region, name, user_date, sat_date, area, mode):
     output_name = f"{name}_{sat_date}_report.pdf"
@@ -961,12 +980,19 @@ def generate_report_pdf(flood, water, region, name, user_date, sat_date, area, m
 
     area_name = f"{name} District" if mode == "district" else f"{name} State"
 
-    location_text = f"""
-    The flood situation across <b>{area_name}</b> was evaluated using Synthetic Aperture Radar (SAR)
-    data from Copernicus Sentinel-1 dual-polarization (VV + VH) collected on <b>{sat_date}</b>.<br/><br/>
-    SAR penetrates cloud cover to map standing water. The spatial inundation estimate shows 
-    approximately <b>{round(area,2):,} hectares</b> flooded across the region.
-    """
+    # Attempt to generate AI Situation Brief using Gemini AI
+    ai_brief = get_ai_flood_summary(name, sat_date, area, mode)
+    
+    if ai_brief:
+        location_text = ai_brief.replace("\n", "<br/><br/>")
+    else:
+        # Standard fallback narrative
+        location_text = f"""
+        The flood situation across <b>{area_name}</b> was evaluated using Synthetic Aperture Radar (SAR)
+        data from Copernicus Sentinel-1 dual-polarization (VV + VH) collected on <b>{sat_date}</b>.<br/><br/>
+        SAR penetrates cloud cover to map standing water. The spatial inundation estimate shows 
+        approximately <b>{round(area,2):,} hectares</b> flooded across the region.
+        """
 
     table_data = [
         ["Parameter", "Details"],
