@@ -549,25 +549,16 @@ def safe_gee_image(image, region, palette, dim, min_value=None, max_value=None):
         return None
 
 # =========================================================
-# AI FLOOD SITUATION BRIEF GENERATOR (DIAGNOSTIC MODE)
+# AI FLOOD SITUATION BRIEF GENERATOR
 # =========================================================
 def get_ai_flood_summary(name, date, area_ha, mode):
     """Generates an executive hydrological summary using Google Gemini AI."""
-    # 1. Check if GEMINI_API_KEY exists in Secrets
     api_key = st.secrets.get("GEMINI_API_KEY")
     if not api_key:
-        st.error("❌ AI Error: 'GEMINI_API_KEY' is missing from Streamlit Cloud Secrets.")
         return None
 
-    # 2. Check if google-genai library is installed
     try:
         from google import genai
-    except ImportError as e:
-        st.error(f"❌ AI Error: 'google-genai' package is not installed on server ({e}). Check requirements.txt.")
-        return None
-
-    # 3. Call Gemini API
-    try:
         client = genai.Client(api_key=api_key)
         
         prompt = f"""
@@ -581,8 +572,9 @@ def get_ai_flood_summary(name, date, area_ha, mode):
         Keep the tone professional, cartographic, and technical. Do not use Markdown formatting or bullet points.
         """
         
+        # Using supported production model
         response = client.models.generate_content(
-            model='gemini-2.5-flash',
+            model='gemini-2.0-flash',
             contents=prompt
         )
         
