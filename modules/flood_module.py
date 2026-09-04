@@ -561,17 +561,18 @@ def get_ai_flood_summary(name, date, area_ha, mode):
         import google.generativeai as genai
         genai.configure(api_key=api_key)
         
-        # Updated to gemini-3.6-flash as requested by API response
         model = genai.GenerativeModel('gemini-3.6-flash')
         
+        # Updated prompt removing NRSC / ISRO references
         prompt = f"""
-        Act as a senior hydrologist at NRSC India. Provide a concise 2-paragraph situation assessment for:
+        Act as an expert satellite hydrologist. Provide a concise 2-paragraph situation assessment for:
         - Study Area: {name} ({mode.capitalize()})
         - Satellite Observation Date: {date}
         - Estimated Inundated Area: {area_ha:,.2f} hectares
 
-        Paragraph 1: Executive situation overview mentioning seasonal monsoon patterns, regional river network dynamics (e.g., Ghaghara/Gandak/Ganga tributaries), and inundation extent.
-        Paragraph 2: Strategic guidance for State Disaster Management Authorities (SDMA) regarding emergency relief deployment and multi-temporal monitoring.
+        Paragraph 1: Executive situation overview mentioning seasonal monsoon patterns, regional river network dynamics (e.g., local rivers and tributaries), and inundation extent.
+        Paragraph 2: Strategic guidance for State Disaster Management Authorities (SDMA) regarding emergency relief deployment and multi-temporal monitoring. State that automated multi-temporal satellite monitoring will be maintained through this dashboard to track flood wave propagation and recession trajectories. Do not mention NRSC, ISRO, or any specific government sensing organization.
+        
         Keep the tone professional, cartographic, and technical. Do not use Markdown formatting or bullet points.
         """
         
