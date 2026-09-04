@@ -561,11 +561,11 @@ def get_ai_flood_summary(name, date, area_ha, mode):
         import google.generativeai as genai
         genai.configure(api_key=api_key)
         
-        # Use gemini-2.5-flash model
-        model = genai.GenerativeModel('gemini-2.5-flash')
+        # Updated to gemini-3.6-flash as requested by API response
+        model = genai.GenerativeModel('gemini-3.6-flash')
         
         prompt = f"""
-        Act as a senior hydrologist in India. Provide a concise 2-paragraph situation assessment for:
+        Act as a senior hydrologist at NRSC India. Provide a concise 2-paragraph situation assessment for:
         - Study Area: {name} ({mode.capitalize()})
         - Satellite Observation Date: {date}
         - Estimated Inundated Area: {area_ha:,.2f} hectares
