@@ -553,29 +553,38 @@ def safe_gee_image(image, region, palette, dim, min_value=None, max_value=None):
 # =========================================================
 def get_ai_flood_summary(name, date, area_ha, mode):
     """Generates an executive hydrological summary using Google Gemini AI."""
-    try:
-        api_key = st.secrets.get("GEMINI_API_KEY")
-        if not api_key or not HAS_GENAI:
-            return None
+    api_key = st.secrets.get("GEMINI_API_KEY")
+    
+    if not api_key:
+        return None
 
+    try:
+        from google import genai
         client = genai.Client(api_key=api_key)
+        
         prompt = f"""
         Act as a senior hydrologist at NRSC India. Provide a concise 2-paragraph situation assessment for:
         - Study Area: {name} ({mode.capitalize()})
         - Satellite Observation Date: {date}
         - Estimated Inundated Area: {area_ha:,.2f} hectares
 
-        Paragraph 1: Executive situation overview mentioning monsoon patterns, regional river network dynamics, and inundation extent.
+        Paragraph 1: Executive situation overview mentioning seasonal monsoon patterns, regional river network dynamics (e.g., Ghaghara/Gandak tributaries if Bihar/UP), and inundation extent.
         Paragraph 2: Strategic guidance for State Disaster Management Authorities (SDMA) regarding emergency relief deployment and multi-temporal monitoring.
         Keep the tone professional, cartographic, and technical. Do not use Markdown formatting or bullet points.
         """
+        
         response = client.models.generate_content(
             model='gemini-2.5-flash',
             contents=prompt
         )
-        return response.text.strip()
-    except Exception:
-        return None
+        
+        if response and response.text:
+            return response.text.strip()
+            
+    except Exception as e:
+        print(f"Gemini Generation Error: {e}")
+        
+    return None
 
 # =========================================================
 # GET FLOOD MAP
