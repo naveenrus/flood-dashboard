@@ -552,17 +552,20 @@ def safe_gee_image(image, region, palette, dim, min_value=None, max_value=None):
 # AI FLOOD SITUATION BRIEF GENERATOR
 # =========================================================
 def get_ai_flood_summary(name, date, area_ha, mode):
-    """Generates an executive hydrological summary using Google Gemini AI."""
+    """Generates an executive hydrological summary using Gemini AI."""
     api_key = st.secrets.get("GEMINI_API_KEY")
     if not api_key:
         return None
 
     try:
-        from google import genai
-        client = genai.Client(api_key=api_key)
+        import google.generativeai as genai
+        genai.configure(api_key=api_key)
+        
+        # Use gemini-2.5-flash model
+        model = genai.GenerativeModel('gemini-2.5-flash')
         
         prompt = f"""
-        Act as a senior hydrologist at NRSC India. Provide a concise 2-paragraph situation assessment for:
+        Act as a senior hydrologist in India. Provide a concise 2-paragraph situation assessment for:
         - Study Area: {name} ({mode.capitalize()})
         - Satellite Observation Date: {date}
         - Estimated Inundated Area: {area_ha:,.2f} hectares
@@ -572,26 +575,13 @@ def get_ai_flood_summary(name, date, area_ha, mode):
         Keep the tone professional, cartographic, and technical. Do not use Markdown formatting or bullet points.
         """
         
-        # Try primary recommended model first
-        candidate_models = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash-latest']
-        response = None
-        
-        for model_name in candidate_models:
-            try:
-                response = client.models.generate_content(
-                    model=model_name,
-                    contents=prompt
-                )
-                if response and response.text:
-                    break
-            except Exception:
-                continue
+        response = model.generate_content(prompt)
         
         if response and response.text:
             return response.text.strip()
             
     except Exception as e:
-        st.error(f"❌ Gemini API Call Failed: {e}")
+        st.error(f"❌ Gemini Generation Error: {e}")
         return None
 
     return None
