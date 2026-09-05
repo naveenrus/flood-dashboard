@@ -586,6 +586,7 @@ def get_ai_flood_summary(name, date, area_ha, mode):
         return None
 
     return None
+
 # =========================================================
 # GET FLOOD MAP
 # =========================================================
@@ -743,28 +744,13 @@ def get_flood_map(name, date, mode):
     return (m, flood_area, flood, permanent_water, region, metadata)
 
 # =========================================================
-# GENERATE MAP PDF (SYNCHRONIZED AREA & PIL RESIZING)
+# GENERATE MAP PDF (AREA LINE REMOVED FROM SIDEBAR)
 # =========================================================
 def generate_map_pdf(flood, water, region, name, date, area_ha=None):
     simple_region = region.simplify(maxError=500)
     coords = simple_region.bounds().coordinates().getInfo()[0]
     width = abs(coords[1][0] - coords[0][0])
     dim = 1024 if width < 5 else 512
-
-    # Use precalculated area if passed to avoid numerical mismatch between map and report
-    if area_ha is None:
-        area_calc = flood.multiply(ee.Image.pixelArea()).reduceRegion(
-            reducer=ee.Reducer.sum(),
-            geometry=region,
-            scale=30,
-            maxPixels=1e13,
-            bestEffort=True
-        )
-        area_dict = area_calc.getInfo()
-        raw_val = list(area_dict.values())[0] if area_dict else 0
-        flood_area = (raw_val / 10000) if raw_val else 0
-    else:
-        flood_area = area_ha
 
     user_d = datetime.strptime(date, "%Y-%m-%d")
     sar_img_obj, sar_metadata = find_latest_sar_image(simple_region, user_d)
@@ -905,15 +891,15 @@ def generate_map_pdf(flood, water, region, name, date, area_ha=None):
         fontweight="bold"
     )
 
+    # AREA LINE REMOVED HERE: Keeping sidebar clear and focused
     info_text = (
         f"Requested Date: {date}\n\n"
         f"Satellite Date: {actual_date}\n\n"
-        f"Estimated Flood:\n{round(flood_area, 2):,} ha\n\n"
         f"Sensor:\nSentinel-1 (VV+VH)"
     )
 
     fig.text(
-        0.78, 0.32,
+        0.78, 0.35,
         info_text,
         fontsize=9.5,
         bbox=dict(
